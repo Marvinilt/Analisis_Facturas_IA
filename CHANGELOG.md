@@ -12,6 +12,75 @@ _Sin cambios todavía._
 
 ---
 
+## [1.1.0] - 2026-11-22
+
+Rediseño completo del frontend, inicio de sesión, panel de indicadores con gráficos y publicación en internet con Cloudflare Tunnel.
+
+### Agregado
+
+#### Inicio de sesión y seguridad (`app/auth.py`, `app/main.py`)
+
+- Pantalla de acceso con usuario y contraseña, opción «Mantener la sesión en este equipo», mostrar u ocultar la contraseña y medidor de fortaleza al crear la cuenta (D-37).
+- Contraseñas con scrypt de la biblioteca estándar y mínimo de 10 caracteres; sesiones por cookie `HttpOnly`, `SameSite=Lax` y `Secure` por HTTPS, de 12 horas, guardando en la base solo el hash del token (D-37, D-38).
+- Bloqueo de 5 minutos tras 5 intentos fallidos desde la misma IP, que se toma de `CF-Connecting-IP` cuando la petición pasa por Cloudflare (D-38).
+- Creación de la primera cuenta solo desde el mismo equipo y comando `python -m app.auth crear-usuario <usuario>` para crear la cuenta o cambiar la contraseña (D-39).
+- Middleware que exige sesión en toda la API y en el diagrama, rechaza las peticiones de otro origen que modifican datos y agrega cabeceras de seguridad (D-40).
+- Endpoints `/api/auth/estado`, `/api/auth/login`, `/api/auth/configurar` y `/api/auth/logout`.
+
+#### Panel de indicadores (`app/estadisticas.py`, `web/graficos.js`)
+
+- Endpoint `/api/estadisticas?dias=N` con la serie diaria de resultados, los motivos de revisión clasificados, el rendimiento por modelo, el monto registrado y el total catálogo, y la duración de las corridas (D-42).
+- **Recorrido de cada factura**: las 7 etapas del flujo, con el dato clave de cada una, cuántas facturas se desvían a revisión en cada etapa y la etapa en curso animada cuando hay una corrida. En móvil se muestra como línea de tiempo vertical.
+- Cinco indicadores: pendientes en Drive, procesadas y a revisión (con su tendencia diaria), tasa de éxito con barra de proporción y monto registrado con el total catálogo.
+- Filtro de periodo: 7, 30 y 90 días, o todo. Se recuerda en el navegador.
+- Gráfico de columnas apiladas **Resultado por día**, con leyenda y tooltip por día.
+- Gráfico de barras **Por qué van a revisión**, con cantidad y porcentaje.
+- Tabla **Rendimiento por modelo**: intentos, porcentaje de datos válidos y segundos promedio.
+- Lista de **corridas** con filtro (programadas, manuales, detenidas), duración y resultado; al elegir una se ve su bitácora.
+- **Bitácora** con filtro por nivel (info, avisos, errores) y búsqueda con resaltado.
+- Gráficos propios en SVG, sin bibliotecas, que siguen el tema (D-41).
+
+#### Interfaz
+
+- Rediseño completo con identidad propia: acento violeta de sello, tipografías Bricolage Grotesque y Figtree, y colores de estado reservados con icono y texto (D-43).
+- Menú lateral con iconos, contraíble a 76 px y persistente; en tableta y móvil se abre como panel lateral.
+- Botón de **tema claro u oscuro** en la esquina superior derecha de todas las pantallas, incluida la de acceso. Por defecto sigue al sistema (D-44).
+- Barra superior fija con el estado del proceso, **Procesar ahora** y **Detener**.
+- Estado del servicio y contador de facturas en revisión en el menú lateral.
+- **Facturas**: filtros por estado con contadores, búsqueda por archivo, emisor, número o motivo, orden por cualquier columna, paginación de 15, exportación a CSV, tipo de archivo identificado y navegación con teclado.
+- **Detalle de la factura** en un panel lateral: totales, motivo de revisión, datos extraídos, líneas con su producto del catálogo, reglas de validación con iconos, intentos por modelo, texto OCR y bitácora. Se cierra con Esc o al hacer clic fuera.
+- **Configuración** con navegación por iconos, interruptores en lugar de casillas, campos alineados, enlaces directos a cada sección (`#config/modelos`) y estados de carga.
+- Avisos apilables, tooltips, estados vacíos con indicaciones y animaciones que respetan «reducir movimiento».
+
+#### Publicación
+
+- Script `scripts/publicar_cloudflare.ps1` para crear el túnel, el registro DNS del subdominio y la configuración (`-Configurar`), y para publicar el sistema (D-45).
+
+#### Pruebas y documentación
+
+- 6 pruebas unitarias nuevas de inicio de sesión y protección de la API (`tests/test_auth.py`); en total, 40.
+- Pruebas de punta a punta de la interfaz con Playwright y el navegador del equipo: 23 casos en escritorio, laptop, tableta y móvil, en tema claro y oscuro, con detección automática de errores de JavaScript, desbordes, textos cortados e iconos rotos (`tests/frontend/probar_frontend.py`, D-46).
+- Generador de datos de demostración: 45 días, 236 facturas de emisores ficticios (`tests/frontend/datos_demo.py`).
+- Reporte de pruebas con los 11 defectos encontrados y su corrección, y 38 capturas (`tests/frontend/REPORTE_PRUEBAS.md`).
+- `requirements-dev.txt` con Playwright.
+- README reescrito: badges de las tecnologías, capturas, arquitectura con Cloudflare, ejecución, configuración, publicación, interfaz, API y seguridad.
+- Decisiones 37 a 46 en `DECISIONES.md`.
+
+### Cambiado
+
+- La aplicación ya no es de acceso libre: todas las rutas, salvo la pantalla de acceso, requieren sesión. La decisión 36 queda reemplazada por la 37.
+- El frontend pasa de pestañas en la cabecera a una estructura con menú lateral y rutas por `#hash`.
+- Los números se muestran siempre con separador de miles.
+
+### Corregido
+
+Defectos encontrados por las pruebas de la interfaz antes de publicar la versión (detalle en el reporte):
+
+- La tarjeta «Tasa de éxito» heredaba la animación del sello de la pantalla de acceso y desbordaba la página en móvil.
+- Al cerrar sesión, una consulta de estado tardía podía reiniciar el formulario de acceso mientras se escribía.
+- El número de factura se partía en dos líneas y el formato de miles era inconsistente.
+- Campos de configuración desalineados, hueco en los indicadores en tableta y título repetido en las alertas.
+
 ## [1.0.0] - 2026-11-22
 
 Primera versión completa del sistema: procesamiento de punta a punta de facturas desde Google Drive hasta Google Sheets, con aplicación web de operación y configuración.

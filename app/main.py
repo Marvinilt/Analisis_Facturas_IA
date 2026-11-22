@@ -11,11 +11,11 @@ from contextlib import asynccontextmanager
 from typing import Any
 
 import httpx
-from fastapi import Body, FastAPI, File, HTTPException, UploadFile
-from fastapi.responses import FileResponse
+from fastapi import Body, FastAPI, File, HTTPException, Request, Response, UploadFile
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import catalogo, configuracion, db, secretos
+from . import auth, catalogo, configuracion, db, estadisticas, secretos
 from .extraction import ErrorDocumento, ErrorProveedor, crear_cadena
 from .extraction.preparar import preparar
 from .servicio import servicio
@@ -36,6 +36,83 @@ async def ciclo(app: FastAPI):
 
 
 app = FastAPI(title="Facturas IA", lifespan=ciclo)
+
+# Rutas que se pueden abrir sin sesión: la página de inicio (que muestra el login), sus archivos y la autenticación.
+PUBLICAS = ("/web/", "/api/auth/")
+
+
+@app.middleware("http")
+async def proteger(request: Request, llamar):
+    ruta = request.url.path
+    if request.method not in ("GET", "HEAD", "OPTIONS"):
+        origen = request.headers.get("origin")
+        if origen and origen.split("://", 1)[-1] != request.headers.get("host"):
+            return JSONResponse({"detail": "Origen no permitido."}, status_code=403)
+    if ruta != "/" and not ruta.startswith(PUBLICAS):
+        if not auth.usuario_de(request.cookies.get(auth.COOKIE)):
+            if ruta.startswith("/api/"):
+                return JSONResponse({"detail": "Inicia sesión para continuar."}, status_code=401)
+            return RedirectResponse("/")
+    respuesta = await llamar(request)
+    respuesta.headers.setdefault("X-Content-Type-Options", "nosniff")
+    respuesta.headers.setdefault("X-Frame-Options", "SAMEORIGIN")
+    respuesta.headers.setdefault("Referrer-Policy", "same-origin")
+    if ruta.startswith("/api/"):
+        respuesta.headers.setdefault("Cache-Control", "no-store")
+    return respuesta
+
+
+# ── sesión ───────────────────────────────────────────────
+@app.get("/api/auth/estado")
+def estado_sesion(request: Request) -> dict[str, Any]:
+    usuario = auth.usuario_de(request.cookies.get(auth.COOKIE))
+    hay = auth.hay_usuarios()
+    return {"autenticado": bool(usuario), "usuario": usuario, "requiere_configuracion": not hay,
+            "configuracion_permitida": not hay and auth.es_local(request)}
+
+
+def _con_sesion(request: Request, respuesta: Response, usuario: str, recordar: bool) -> None:
+    token = auth.abrir_sesion(usuario)
+    respuesta.set_cookie(auth.COOKIE, token, httponly=True, samesite="lax", secure=auth.es_https(request),
+                         max_age=auth.DURACION_HORAS * 3600 if recordar else None, path="/")
+
+
+@app.post("/api/auth/login")
+def login(request: Request, respuesta: Response, usuario: str = Body(...), clave: str = Body(...),
+          recordar: bool = Body(False)) -> dict[str, Any]:
+    ip = auth.ip_cliente(request)
+    espera = auth.bloqueado(ip)
+    if espera:
+        raise HTTPException(429, f"Demasiados intentos. Prueba de nuevo en {max(1, espera // 60)} min.")
+    if not auth.autenticar(usuario, clave):
+        auth.registrar_fallo(ip)
+        raise HTTPException(401, "Usuario o contraseña incorrectos.")
+    auth.limpiar_fallos(ip)
+    _con_sesion(request, respuesta, usuario, recordar)
+    return {"ok": True, "usuario": usuario.strip().lower()}
+
+
+@app.post("/api/auth/configurar")
+def configurar_admin(request: Request, respuesta: Response, usuario: str = Body(...),
+                     clave: str = Body(...)) -> dict[str, Any]:
+    """Crea la primera cuenta. Solo funciona si no hay ninguna y la petición viene de este equipo."""
+    if auth.hay_usuarios():
+        raise HTTPException(409, "Ya existe una cuenta. Inicia sesión.")
+    if not auth.es_local(request):
+        raise HTTPException(403, "La primera cuenta solo se crea desde este equipo (http://localhost:8000).")
+    errores = auth.validar_nueva(usuario, clave)
+    if errores:
+        raise HTTPException(422, {"errores": errores})
+    auth.guardar_usuario(usuario, clave)
+    _con_sesion(request, respuesta, usuario, False)
+    return {"ok": True, "usuario": usuario.strip().lower()}
+
+
+@app.post("/api/auth/logout")
+def logout(request: Request, respuesta: Response) -> dict[str, Any]:
+    auth.cerrar_sesion(request.cookies.get(auth.COOKIE))
+    respuesta.delete_cookie(auth.COOKIE, path="/")
+    return {"ok": True}
 
 
 # ── estado y ejecución ───────────────────────────────────
@@ -61,6 +138,11 @@ def procesar() -> dict[str, Any]:
 def detener() -> dict[str, Any]:
     servicio.detener()
     return {"ok": True}
+
+
+@app.get("/api/estadisticas")
+def leer_estadisticas(dias: int = 30) -> dict[str, Any]:
+    return estadisticas.calcular(dias if dias > 0 else None)
 
 
 @app.get("/api/corridas")

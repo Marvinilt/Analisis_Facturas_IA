@@ -1,149 +1,183 @@
+<div align="center">
+
 # Facturas IA
 
-> Procesamiento automático de facturas (PDF e imágenes) desde Google Drive, con extracción por IA, validación de montos, cruce con catálogo y registro en Google Sheets.
+**Procesamiento automático de facturas: de la carpeta de Google Drive a Google Sheets, sin teclear una cifra.**
 
-![Versión](https://img.shields.io/badge/versión-1.0.0-blue)
-![Python](https://img.shields.io/badge/python-3.13-3776AB?logo=python&logoColor=white)
-![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-009688?logo=fastapi&logoColor=white)
-![Pruebas](https://img.shields.io/badge/pruebas-34%20unitarias%20%2B%20e2e-success)
+Lee cada factura (PDF o imagen) con IA, comprueba que los montos cuadren, la cruza con tu catálogo de productos, la registra en una hoja de cálculo y separa las que necesitan revisión manual.
+
+[![Versión](https://img.shields.io/badge/versión-1.1.0-4B3FD1)](CHANGELOG.md)
+[![Pruebas](https://img.shields.io/badge/pruebas-40%20unitarias%20%2B%2023%20de%20interfaz-0F7A3D)](tests/frontend/REPORTE_PRUEBAS.md)
+
+[![Python](https://img.shields.io/badge/Python-3.13-3776AB?logo=python&logoColor=white)](https://www.python.org)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com)
+[![Uvicorn](https://img.shields.io/badge/Uvicorn-ASGI-2094F3?logo=gunicorn&logoColor=white)](https://www.uvicorn.org)
+[![SQLite](https://img.shields.io/badge/SQLite-estado-003B57?logo=sqlite&logoColor=white)](https://www.sqlite.org)
+[![OpenAI](https://img.shields.io/badge/OpenAI-gpt--5.4-412991?logo=openai&logoColor=white)](https://platform.openai.com)
+[![Ollama](https://img.shields.io/badge/Ollama-GLM--OCR-000000?logo=ollama&logoColor=white)](https://ollama.com)
+<br>
+[![Google Drive](https://img.shields.io/badge/Google%20Drive-entrada-4285F4?logo=googledrive&logoColor=white)](https://drive.google.com)
+[![Google Sheets](https://img.shields.io/badge/Google%20Sheets-resultados-34A853?logo=googlesheets&logoColor=white)](https://sheets.google.com)
+[![Composio](https://img.shields.io/badge/Composio-Connect-6E56CF)](https://composio.dev)
+[![Cloudflare](https://img.shields.io/badge/Cloudflare-Tunnel-F38020?logo=cloudflare&logoColor=white)](https://www.cloudflare.com/products/tunnel/)
+[![JavaScript](https://img.shields.io/badge/JavaScript-sin%20dependencias-F7DF1E?logo=javascript&logoColor=black)](web/)
+[![Playwright](https://img.shields.io/badge/Playwright-pruebas%20E2E-2EAD33?logo=playwright&logoColor=white)](tests/frontend/)
+
+</div>
 
 ---
 
-## Tabla de contenido
+## Capturas
 
-- [Descripción](#descripción)
+<table>
+  <tr>
+    <td colspan="2"><img src="docs/capturas/panel.png" alt="Panel principal con el recorrido de cada factura, indicadores, gráfico de resultados por día y motivos de revisión"></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/capturas/acceso.png" alt="Pantalla de inicio de sesión con la animación de lectura de una factura"></td>
+    <td width="50%"><img src="docs/capturas/facturas_detalle.png" alt="Detalle de una factura en tema oscuro, con datos extraídos, líneas y coincidencias del catálogo"></td>
+  </tr>
+  <tr>
+    <td colspan="2" align="center"><sub>Panel principal (tema claro) · Inicio de sesión · Detalle de una factura (tema oscuro). Datos de demostración.</sub></td>
+  </tr>
+</table>
+
+## Contenido
+
+- [Qué hace](#qué-hace)
 - [Características](#características)
 - [Arquitectura](#arquitectura)
 - [Flujo de procesamiento](#flujo-de-procesamiento)
 - [Requisitos](#requisitos)
 - [Instalación](#instalación)
 - [Configuración](#configuración)
-- [Uso](#uso)
+- [Ejecución](#ejecución)
+- [Publicación en Cloudflare](#publicación-en-cloudflare)
+- [La interfaz](#la-interfaz)
 - [API REST](#api-rest)
 - [Pruebas](#pruebas)
 - [Estructura del proyecto](#estructura-del-proyecto)
 - [Seguridad](#seguridad)
 - [Solución de problemas](#solución-de-problemas)
-- [Limitaciones conocidas](#limitaciones-conocidas)
 - [Documentación relacionada](#documentación-relacionada)
 
----
+## Qué hace
 
-## Descripción
+Subes facturas a la carpeta **«Facturas IA»** de Google Drive. Para cada archivo, el sistema:
 
-**Facturas IA** vigila la carpeta **«Facturas IA»** de Google Drive y procesa, una por una, las facturas que se suben a ella. Para cada archivo:
-
-1. Extrae los datos con una **cadena de modelos de IA**: GLM-OCR en local (gratis, vía Ollama) + `gpt-5.4-nano` para estructurar; si falla, el respaldo **OpenAI `gpt-5.4-mini` con visión**.
-2. **Valida** el resultado contra un esquema JSON configurable y comprueba que los montos cuadren (líneas, subtotal, descuentos, impuestos y total).
+1. **Extrae los datos** con una cadena de modelos de IA: GLM-OCR en local (gratis, vía Ollama) + `gpt-5.4-nano` para ordenarlos; si falla, el respaldo **OpenAI `gpt-5.4-mini` con visión**.
+2. **Valida** el resultado contra un esquema JSON configurable y comprueba que los montos cuadren: líneas, subtotal, descuentos, impuestos y total.
 3. **Cruza** cada línea con el catálogo de productos y calcula el *total catálogo*.
-4. **Registra** todo en la hoja de Google Sheets **«Facturas Procesadas IA»** (pestañas *Facturas*, *Detalle* y *Errores*).
-5. **Mueve** el archivo a la subcarpeta **Procesadas** o, si los datos no son confiables, a **Revisión manual** con el motivo exacto.
+4. **Registra** todo en la hoja **«Facturas Procesadas IA»** de Google Sheets, con las pestañas *Facturas*, *Detalle* y *Errores*.
+5. **Mueve** el archivo a **Procesadas** o, si los datos no son confiables, a **Revisión manual** con el motivo exacto.
 
-Si ningún modelo está disponible, el proceso **se detiene** y la factura queda pendiente: una caída del servicio no dice nada sobre la factura, así que nunca se manda a revisión por eso.
-
-Toda la operación se controla desde una aplicación web local (panel, detalle de facturas y configuración).
+Si ningún modelo está disponible, el proceso **se detiene** y la factura queda pendiente: una caída del servicio no dice nada de la factura, así que nunca la manda a revisión.
 
 ## Características
 
 | Área | Capacidades |
 |------|-------------|
-| **Entrada** | PDF (con o sin capa de texto), JPG, PNG y WEBP. Otros tipos se ignoran y se quedan en la carpeta. |
-| **Extracción** | Cadena de modelos configurable, hasta 3 intentos por factura con escalamiento al modelo más robusto y *pistas* sobre lo que falló. Si el PDF trae texto, se salta el OCR. |
+| **Entrada** | PDF con o sin capa de texto, JPG, PNG y WEBP. Los demás tipos se ignoran y se quedan en la carpeta. |
+| **Extracción** | Cadena de modelos configurable, hasta 3 intentos por factura, escalando al modelo más robusto con una pista de lo que falló. Si el PDF trae texto, se salta el OCR. |
 | **Validación** | Esquema JSON editable, salida estructurada estricta, cuadre de montos con tolerancias de redondeo, umbral de confianza y detección de documentos que no son facturas. |
-| **Duplicados** | Por huella del archivo (md5) y por emisor + número de factura ya registrados. |
-| **Catálogo** | Coincidencia por código exacto, palabra clave/sinónimo y parecido de texto (rapidfuzz ≥ 85). Importación desde CSV. |
-| **Resultados** | Google Sheets con tres pestañas; columnas nuevas al final si el esquema crece. Exportable a Excel desde Drive. |
-| **Resiliencia** | Escritura idempotente (cada fila lleva el ID del archivo), movimiento solo después de registrar, recuperación de facturas «en proceso» tras un corte, reintentos ante el límite de cuota (429) de Google. |
-| **Operación** | Procesamiento manual o automático con frecuencia y franja horaria, bitácora por paso, alertas en el panel y prueba de extracción con archivos locales. |
-| **Pruebas** | Modo *Carpeta local* que imita Drive, generador de 11 documentos de prueba y pruebas de punta a punta con modelos reales. |
+| **Duplicados** | Por huella del archivo (md5) y por emisor + número de factura. |
+| **Catálogo** | Coincidencia por código, palabra clave o sinónimo y parecido de texto. Importación desde CSV. |
+| **Panel** | Recorrido de la factura en 7 etapas con la etapa en curso en vivo; indicadores con tendencia; gráficos de resultados por día, motivos de revisión y rendimiento por modelo; corridas y bitácora con filtros y búsqueda. |
+| **Facturas** | Tabla con filtros por estado, búsqueda, orden por columna, paginación, exportación a CSV y detalle completo en un panel lateral. |
+| **Interfaz** | Inicio de sesión, menú lateral contraíble, tema claro y oscuro, diseño adaptable a escritorio, tableta y móvil, y navegación con teclado. |
+| **Resiliencia** | Escritura idempotente, movimiento solo después de registrar, recuperación tras un corte y reintentos ante el límite de cuota de Google. |
+| **Publicación** | Cloudflare Tunnel con HTTPS en un subdominio propio, sin abrir puertos. |
 
 ## Arquitectura
 
 ```mermaid
 flowchart LR
-    subgraph Google["Google (vía Composio Connect)"]
-        D[("Drive<br/>carpeta «Facturas IA»")]
-        S[("Sheets<br/>«Facturas Procesadas IA»")]
+    U(["Navegador"]) -- HTTPS --> CF["Cloudflare<br/>facturas.marvinlt.cloud"]
+    CF -- túnel cifrado --> T["cloudflared"]
+    U -. localhost .-> API
+
+    subgraph Equipo["Equipo local"]
+        T --> API
+        subgraph App["Facturas IA · FastAPI :8000"]
+            AUTH["Sesión y seguridad<br/>app/auth.py"]
+            API["API REST + frontend<br/>app/main.py"]
+            EST["Indicadores<br/>app/estadisticas.py"]
+            SV["Planificador<br/>app/servicio.py"]
+            P["Pipeline 01–14<br/>app/pipeline.py"]
+            DB[("SQLite<br/>data/estado.db")]
+        end
+        O["Ollama<br/>GLM-OCR"]
     end
 
-    subgraph App["Facturas IA (FastAPI · localhost:8000)"]
-        W["Frontend web<br/>HTML + JS"]
-        API["API REST<br/>app/main.py"]
-        SV["Servicio y planificador<br/>app/servicio.py"]
-        P["Pipeline 01–14<br/>app/pipeline.py"]
-        V["Validación<br/>app/validacion.py"]
-        C["Catálogo<br/>app/catalogo.py"]
-        DB[("SQLite<br/>data/estado.db")]
-    end
-
-    subgraph IA["Modelos"]
-        O["GLM-OCR<br/>Ollama local"]
-        N["OpenAI gpt-5.4-nano<br/>estructurador"]
-        M["OpenAI gpt-5.4-mini<br/>visión (respaldo)"]
-    end
-
-    W --> API --> SV --> P
-    P --> V
-    P --> C
-    P --> DB
-    P <--> D
-    P --> S
-    P --> O --> N
-    P --> M
+    API --> AUTH
+    API --> EST --> DB
+    API --> SV --> P --> DB
+    P --> O
+    P --> OA["OpenAI<br/>gpt-5.4-nano / mini"]
+    P <--> CO["Composio Connect"]
+    CO <--> GD[("Google Drive")]
+    CO --> GS[("Google Sheets")]
 ```
 
-**Componentes principales**
+| Capa | Tecnología |
+|------|------------|
+| Backend | Python 3.13, FastAPI y Uvicorn. Un único proceso sirve la API, el frontend y el planificador. |
+| Estado | SQLite (`data/estado.db`): archivos, corridas, bitácora, alertas, usuarios y sesiones. |
+| Frontend | HTML, CSS y JavaScript sin dependencias ni compilación. Gráficos SVG propios (`web/graficos.js`). |
+| IA | GLM-OCR en Ollama (local, CPU) y OpenAI con salida estructurada estricta. |
+| Google | Drive y Sheets mediante Composio Connect (MCP), limitado a la carpeta «Facturas IA». |
+| Publicación | Cloudflare Tunnel (`cloudflared`). |
 
-- **Backend**: Python 3.13 + FastAPI, servido con Uvicorn. Un único proceso sirve la API y el frontend.
-- **Estado**: SQLite (`data/estado.db`) con archivos, corridas, bitácora y alertas.
-- **Configuración**: `data/config.json`, editable desde la app y con valores por defecto.
-- **Almacenamiento**: interfaz común (`app/storage/base.py`) con dos implementaciones: Google Drive + Sheets mediante **Composio Connect** (MCP, cabecera `x-consumer-api-key`) y una **carpeta local** para pruebas.
-- **Extracción**: interfaz común (`app/extraction/base.py`) con errores tipados: `ErrorProveedor` (el modelo no responde, puede detener la corrida) y `ErrorDocumento` (el documento no da datos, cuenta como intento fallido).
-
-El diagrama interactivo completo está en [diseno/flujo-facturas-ia.html](diseno/flujo-facturas-ia.html) y también en la app, pestaña *Diagrama*.
+El diagrama interactivo del flujo está en [diseno/flujo-facturas-ia.html](diseno/flujo-facturas-ia.html), y en la app, en *Diagrama del flujo*.
 
 ## Flujo de procesamiento
 
 | Paso | Nombre | Qué hace |
 |------|--------|----------|
-| 01 | Vigilar carpeta | Localiza «Facturas IA» y crea *Procesadas* y *Revisión manual* si faltan. Se detiene si hay dos carpetas con el mismo nombre. |
-| 02 | Detectar nuevos | Lista los archivos, ignora los tipos no admitidos y detecta duplicados exactos (md5). |
+| 01 | Vigilar carpeta | Localiza «Facturas IA» y crea *Procesadas* y *Revisión manual* si faltan. |
+| 02 | Detectar nuevos | Lista los archivos, ignora los tipos no admitidos y detecta duplicados exactos. |
 | 03 | Cola | Ordena las pendientes y respeta el máximo por corrida. |
 | 04 | Descargar y preparar | Descarga y convierte a imágenes (PDF a 150 dpi, máximo 5 páginas) o usa la capa de texto. |
 | 05 | Extracción IA | Modelo primario: GLM-OCR + estructurador. |
-| 06 | Modelo de respaldo | Reintentos con el siguiente modelo de la cadena y una pista de lo que falló. |
+| 06 | Modelo de respaldo | Reintenta con el siguiente modelo de la cadena y una pista de lo que falló. |
 | 07 | Validar esquema | Campos obligatorios, tipos y formato. |
-| 08 | Cuadre de montos | `cantidad × precio − descuento = importe`, `Σ importes = subtotal`, `subtotal − descuento + impuestos + otros = total`. |
-| 09 | ¿Datos confiables? | Esquema + cuadre + confianza ≥ 0,6 + es factura. |
-| 10 | Cruce con catálogo | Coincidencia de cada línea con los productos. |
-| 11 | Total catálogo | Suma de las líneas del catálogo (sin impuestos por defecto). |
-| 12 | Registrar en la hoja | Agrega filas en *Facturas* y *Detalle*; detecta duplicados por emisor + número. |
-| 13 | Mover a Procesadas | Solo después de que las filas quedaron escritas. |
-| R | Mover a Revisión | Datos no confiables: registra el motivo en *Errores* y mueve el archivo. |
+| 08 | Cuadre de montos | Líneas, subtotal y total con tolerancias de redondeo. |
+| 09 | ¿Datos confiables? | Esquema, cuadre, confianza ≥ 0,6 y que sea una factura. |
+| 10–11 | Catálogo | Coincidencia de cada línea y *total catálogo*. |
+| 12 | Registrar en la hoja | Filas en *Facturas* y *Detalle*; detecta duplicados por emisor + número. |
+| 13 / R | Mover | A *Procesadas*, o a *Revisión manual* con el motivo en la pestaña *Errores*. |
 | 14 | Contar archivos | Actualiza los contadores del panel. |
 
 ## Requisitos
 
-- **Windows** con **Python 3.13** (versión probada) y conexión a internet.
-- **[Ollama](https://ollama.com)** con el modelo `glm-ocr` (2,2 GB). Funciona en CPU: unos 45–60 s por página de imagen. Los PDF con capa de texto no necesitan OCR.
-- **API key de OpenAI**, usada por el estructurador y por el modelo de respaldo.
-- **API key de Composio Connect** (`ck_…`) con **Google Drive** y **Google Sheets** conectados en [composio.dev](https://composio.dev).
+| Requisito | Para qué |
+|-----------|----------|
+| **Windows** con **Python 3.13** | Versión probada. |
+| **[Ollama](https://ollama.com)** con el modelo `glm-ocr` (2,2 GB) | OCR gratis en local. En CPU tarda unos 45–60 s por página de imagen; los PDF con texto no lo necesitan. |
+| **API key de OpenAI** | Estructurador y modelo de respaldo. |
+| **API key de Composio Connect** (`ck_…`) | Con Google Drive y Google Sheets conectados en [composio.dev](https://composio.dev). |
+| *Opcional:* **[cloudflared](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/)** y un dominio en Cloudflare | Publicar el sistema en internet. |
+| *Opcional:* Microsoft Edge o Google Chrome | Pruebas de la interfaz con Playwright. |
 
 ## Instalación
 
 ```powershell
-git clone <url-del-repositorio> "Procesamiento de facturas IA"
-cd "Procesamiento de facturas IA"
+git clone https://github.com/Marvinilt/Analisis_Facturas_IA.git
+cd Analisis_Facturas_IA
 python -m venv .venv
 .venv\Scripts\python -m pip install -r requirements.txt
 ollama pull glm-ocr
 ```
 
+Para desarrollar y correr las pruebas de la interfaz:
+
+```powershell
+.venv\Scripts\python -m pip install -r requirements-dev.txt
+```
+
 ## Configuración
 
-### Claves
-
-Copia la plantilla y completa las claves:
+### 1. Claves
 
 ```powershell
 Copy-Item .env.example .env
@@ -153,104 +187,134 @@ Copy-Item .env.example .env
 |----------|-------------|
 | `OPENAI-APIKEY` | API key de OpenAI. También acepta `OPENAI_APIKEY` u `OPENAI_API_KEY`. |
 | `COMPOSIO-APIKEY` | API key de Composio Connect (`ck_…`). También acepta `COMPOSIO_APIKEY` o `COMPOSIO_API_KEY`. |
-| `FACTURAS_IA_DATA` | *(Opcional)* carpeta de datos; por defecto `data/`. |
+| `FACTURAS_IA_DATA` | *(Opcional)* Carpeta de datos. Por defecto, `data/`. |
 
-Las claves también se pueden escribir en la app (**Configuración → API keys**); en ese caso se guardan cifradas en `data/secretos.enc` y tienen prioridad sobre el `.env`.
+Las claves también se pueden escribir en la app, en **Configuración → Modelos y API keys** o **Conexión**. Ahí se guardan cifradas en `data/secretos.enc` y tienen prioridad sobre el `.env`.
 
-### Opciones de la aplicación
+### 2. Cuenta de administrador
 
-Todo lo demás se edita en **Configuración** y se guarda en `data/config.json` (se crea solo al primer arranque):
-
-| Sección | Qué controla | Valor por defecto |
-|---------|--------------|-------------------|
-| Conexión | Proveedor (`composio` o carpeta local), nombres de carpetas y de la hoja | «Facturas IA», «Procesadas», «Revisión manual», «Facturas Procesadas IA» |
-| Frecuencia | Revisión automática, intervalo, franja horaria, máximo por corrida | Apagada · 20 por corrida |
-| Modelos | Cadena de modelos, intentos, reintentos técnicos, timeout | GLM-OCR local → OpenAI visión · 3 intentos · 240 s |
-| Esquema | Campos de la factura (tabla o JSON Schema) | Número, fecha, emisor, receptor, moneda, líneas, totales |
-| Validación | Tolerancias, confianza mínima, precios con impuesto | 0,02 por línea · 0,05 en totales · 0,6 de confianza |
-| Catálogo | Productos, palabras clave, umbral de parecido, total con impuesto | 5 productos de ejemplo · umbral 85 |
-
-## Uso
-
-Inicia el servidor:
+La primera vez que abres `http://localhost:8000` **en el mismo equipo**, la pantalla de acceso te pide crear la cuenta. Por seguridad, esa pantalla no está disponible a través de Cloudflare. También puedes crearla, o cambiar la contraseña, desde la terminal:
 
 ```powershell
+.venv\Scripts\python -m app.auth crear-usuario admin
+```
+
+La contraseña debe tener al menos 10 caracteres.
+
+### 3. Opciones de la aplicación
+
+Todo lo demás se edita en **Configuración** y se guarda en `data/config.json`, que se crea solo:
+
+| Sección | Qué controla | Por defecto |
+|---------|--------------|-------------|
+| Conexión | Origen (Google Drive o carpeta local de pruebas) y API key de Composio | Google Drive |
+| Carpetas y hoja | Nombres de la carpeta de entrada, las subcarpetas y la hoja de resultados | «Facturas IA», «Procesadas», «Revisión manual», «Facturas Procesadas IA» |
+| Frecuencia | Revisión automática, intervalo, franja horaria y máximo por corrida | Apagada · 20 por corrida |
+| Modelos y API keys | Cadena de modelos, intentos, reintentos y tiempo máximo | GLM-OCR local → OpenAI visión · 3 intentos · 240 s |
+| Esquema de factura | Campos que se extraen (tabla o JSON Schema) | Número, fecha, emisor, receptor, moneda, líneas y totales |
+| Reglas de validación | Tolerancias, confianza mínima y precios con impuesto | 0,02 por línea · 0,05 en totales · 0,6 de confianza |
+| Catálogo de productos | Productos, palabras clave, umbral de parecido | 5 productos de ejemplo · umbral 85 |
+| Probar extracción | Prueba un archivo de tu equipo sin tocar Drive | — |
+
+## Ejecución
+
+```powershell
+ollama serve   # si Ollama no está corriendo como servicio
 .venv\Scripts\python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
 ```
 
-Abre <http://localhost:8000>:
+Abre <http://localhost:8000>, inicia sesión y usa **Procesar ahora**, o activa la revisión automática en **Configuración → Frecuencia**.
 
-- **Panel**: pendientes, procesadas y en revisión; botón *Procesar ahora*, paso en curso, últimas corridas, alertas y bitácora.
-- **Facturas**: cada archivo con su estado. Al abrirlo se ven los datos extraídos, las líneas con su coincidencia en el catálogo, las reglas de validación, los intentos por modelo y el texto OCR.
-- **Configuración**: todas las opciones anteriores, más *Probar conexión*, *Probar extracción* con un archivo del equipo y prueba de descripciones contra el catálogo.
-- **Diagrama**: flujo interactivo del proceso.
+> La app escucha solo en `127.0.0.1`. Para entrar desde otros equipos, publícala con Cloudflare Tunnel; no la expongas con `--host 0.0.0.0`.
+
+## Publicación en Cloudflare
+
+El sistema necesita Ollama, SQLite y un planificador en segundo plano, así que no puede correr en Cloudflare Pages ni en Workers. Se publica con **Cloudflare Tunnel**: `cloudflared` abre una conexión de salida hacia Cloudflare y sirve `http://localhost:8000` con HTTPS en un subdominio, sin abrir puertos en el router.
+
+**Una sola vez** (requiere el dominio en tu cuenta de Cloudflare):
+
+```powershell
+winget install --id Cloudflare.cloudflared
+cloudflared tunnel login   # abre el navegador para autorizar el dominio
+.\scripts\publicar_cloudflare.ps1 -Configurar
+```
+
+`-Configurar` crea el túnel `facturas-ia`, el registro DNS `facturas.marvinlt.cloud` y el archivo `~/.cloudflared/facturas-ia.yml`. Para otro subdominio, usa `-Subdominio` y `-Dominio`.
+
+**Cada vez que quieras publicar** (con la app ya corriendo):
+
+```powershell
+.\scripts\publicar_cloudflare.ps1
+```
+
+El sistema queda en **https://facturas.marvinlt.cloud**, protegido por el inicio de sesión. Para una capa más, puedes poner [Cloudflare Access](https://developers.cloudflare.com/cloudflare-one/applications/) delante del subdominio.
+
+## La interfaz
+
+| Pantalla | Qué muestra |
+|----------|-------------|
+| **Inicio de sesión** | Acceso con usuario y contraseña, creación de la primera cuenta y bloqueo tras 5 intentos fallidos. |
+| **Panel** | Recorrido de la factura en 7 etapas, con cuántas se desvían a revisión en cada una y la etapa en curso cuando hay una corrida. Indicadores de pendientes, procesadas, en revisión, tasa de éxito y monto registrado, con la tendencia diaria. Gráficos de resultados por día, motivos de revisión y rendimiento por modelo. Corridas filtrables y bitácora con filtro por nivel y búsqueda. Filtro de periodo: 7, 30 o 90 días, o todo. |
+| **Facturas** | Todas las facturas con su estado, filtros, búsqueda, orden y paginación. Exportación a CSV. Al abrir una: totales, motivo de revisión, datos extraídos, líneas con su producto del catálogo, reglas de validación, intentos por modelo, texto OCR y bitácora. |
+| **Configuración** | Las ocho secciones descritas en [Configuración](#3-opciones-de-la-aplicación). |
+
+En la barra superior están el estado del proceso, **Procesar ahora** y, en la esquina derecha, el **cambio de tema claro u oscuro**. El menú lateral se contrae con el botón junto al logo, y en móvil se abre con el botón de menú.
 
 ## API REST
 
+Todas las rutas, salvo `/api/auth/*`, requieren sesión.
+
 | Método | Ruta | Descripción |
 |--------|------|-------------|
-| `GET` | `/api/estado` | Contadores, corrida en curso, alertas activas. |
-| `POST` | `/api/procesar` | Inicia una corrida en segundo plano. |
-| `POST` | `/api/detener` | Detiene la corrida al terminar la factura en curso. |
-| `GET` | `/api/corridas` | Historial de corridas. |
-| `GET` | `/api/eventos` | Bitácora de eventos por paso. |
-| `GET` | `/api/archivos` | Archivos conocidos y su estado. |
-| `GET` | `/api/archivos/{file_id}` | Detalle de un archivo: datos, validación, intentos y OCR. |
-| `POST` | `/api/alertas/{alerta_id}/cerrar` | Cierra una alerta. |
-| `GET` | `/api/config` | Configuración completa. |
-| `PUT` | `/api/config/{seccion}` | Guarda una sección (con validación). |
-| `POST` | `/api/config/{seccion}/restablecer` | Vuelve una sección a sus valores por defecto. |
-| `GET` | `/api/secretos` | Estado de las claves (enmascaradas, nunca completas). |
-| `PUT` / `DELETE` | `/api/secretos/{nombre}` | Guarda (cifrada) o borra una clave. |
-| `POST` | `/api/probar/drive` | Prueba la conexión con Drive y Sheets. |
+| `GET` | `/api/auth/estado` | Si hay sesión y si falta crear la primera cuenta. |
+| `POST` | `/api/auth/login` | Inicia sesión (`usuario`, `clave`, `recordar`). |
+| `POST` | `/api/auth/configurar` | Crea la primera cuenta. Solo desde el mismo equipo. |
+| `POST` | `/api/auth/logout` | Cierra la sesión. |
+| `GET` | `/api/estado` | Servicio, contadores, alertas y última corrida. |
+| `GET` | `/api/estadisticas?dias=30` | Indicadores del panel (`dias=0` para todo). |
+| `POST` | `/api/procesar` · `/api/detener` | Inicia una corrida o la detiene tras la factura en curso. |
+| `GET` | `/api/corridas` · `/api/eventos` | Historial de corridas y bitácora. |
+| `GET` | `/api/archivos` · `/api/archivos/{id}` | Facturas y el detalle de una. |
+| `POST` | `/api/alertas/{id}/cerrar` | Descarta una alerta. |
+| `GET` · `PUT` · `POST` | `/api/config` · `/api/config/{sección}` · `/restablecer` | Lee, guarda o restablece la configuración. |
+| `GET` · `PUT` · `DELETE` | `/api/secretos` · `/api/secretos/{nombre}` | Estado de las claves (siempre enmascaradas), guardar o borrar. |
+| `POST` | `/api/probar/drive` · `/extraccion` · `/catalogo` | Pruebas de conexión, extracción y catálogo. |
 | `GET` | `/api/modelos/ollama` | Modelos instalados en Ollama. |
-| `POST` | `/api/probar/extraccion` | Extrae y valida un archivo subido, sin registrarlo. |
-| `POST` | `/api/probar/catalogo` | Prueba descripciones contra el catálogo. |
 
-La documentación interactiva de FastAPI está disponible en <http://localhost:8000/docs>.
+Con sesión iniciada, la documentación interactiva está en `/docs`.
 
 ## Pruebas
 
 ```powershell
-# Pruebas unitarias (sin red): números, fechas, cuadre, catálogo, esquema y reglas de la cadena de modelos
+# Unitarias (sin red): números, fechas, cuadre, catálogo, cadena de modelos e inicio de sesión
 .venv\Scripts\python -m pytest tests -q
 
-# Generar los 11 documentos de prueba
+# Interfaz de punta a punta con un navegador real: 23 casos en escritorio, tableta y móvil, con capturas
+.venv\Scripts\python tests\frontend\probar_frontend.py
+
+# Procesamiento de punta a punta con modelos reales, en una carpeta local simulada o en Google Drive
 .venv\Scripts\python tests\generar_documentos.py
-
-# Punta a punta con modelos reales sobre una carpeta local simulada
 .venv\Scripts\python tests\e2e.py local
-
-# Punta a punta en Google Drive: subir los documentos de prueba y procesarlos
 .venv\Scripts\python scripts\subir_pruebas_drive.py
 .venv\Scripts\python tests\e2e.py drive
-
-# Simulación de caída de todos los modelos
 .venv\Scripts\python tests\e2e_caida.py
 ```
 
-**Documentos de prueba** (`tests/docs/`, resultado esperado en `esperado.json`):
+El reporte de la interfaz, con los casos, las capturas y los defectos corregidos, está en [tests/frontend/REPORTE_PRUEBAS.md](tests/frontend/REPORTE_PRUEBAS.md). Para ver el panel con datos sin tocar los reales:
 
-| Documento | Caso | Resultado esperado |
-|-----------|------|--------------------|
-| `factura_01_ferreteria.pdf` | PDF con capa de texto | Procesada |
-| `factura_02_distribuidora.jpg` | Foto JPG | Procesada |
-| `factura_03_papeleria.png` | PNG sin productos del catálogo | Procesada |
-| `factura_04_escaneada.pdf` | PDF escaneado, descuento impreso en negativo | Procesada |
-| `factura_06_descuentos.jpg` | Descuentos por línea y generales | Procesada |
-| `factura_05_totales_erroneos.pdf` | Los montos no cuadran | Revisión manual |
-| `foto_borrosa.jpg` | Ilegible | Revisión manual |
-| `documento_protegido.pdf` | PDF con contraseña | Revisión manual |
-| `no_es_factura.jpg` | Documento que no es factura | Revisión manual |
-| `factura_01_copia.pdf` | Duplicado exacto | Revisión manual |
-| `notas.txt` | Tipo no admitido | Ignorado |
+```powershell
+.venv\Scripts\python tests\frontend\datos_demo.py C:\temp\facturas-demo
+$env:FACTURAS_IA_DATA = "C:\temp\facturas-demo"; .venv\Scripts\python -m uvicorn app.main:app --port 8001
+```
 
 ## Estructura del proyecto
 
 ```
 .
 ├── app/
-│   ├── main.py              API (FastAPI) y servidor del frontend
+│   ├── main.py              API (FastAPI), protección de rutas y servidor del frontend
+│   ├── auth.py              usuarios, contraseñas (scrypt), sesiones y límite de intentos
+│   ├── estadisticas.py      indicadores y series del panel
 │   ├── pipeline.py          flujo completo, pasos 01–14, revisión y detención
 │   ├── servicio.py          corridas en segundo plano y planificador
 │   ├── validacion.py        esquema, cuadre de montos y decisión
@@ -258,45 +322,50 @@ La documentación interactiva de FastAPI está disponible en <http://localhost:8
 │   ├── configuracion.py     configuración editable con valores por defecto
 │   ├── secretos.py          API keys cifradas (Fernet)
 │   ├── settings.py          rutas del proyecto y lectura de .env
-│   ├── db.py                estado en SQLite (archivos, corridas, bitácora, alertas)
+│   ├── db.py                estado en SQLite
 │   ├── extraction/          preparación del documento, GLM-OCR, OpenAI e instrucciones
-│   └── storage/             Drive + Sheets vía Composio, y carpeta local para pruebas
-├── web/                     frontend (HTML, CSS y JS sin dependencias)
-├── tests/                   pruebas unitarias, generador de documentos y pruebas de punta a punta
-├── scripts/                 utilidades: subir documentos de prueba a Drive, ver la hoja
+│   └── storage/             Drive y Sheets vía Composio, y carpeta local para pruebas
+├── web/
+│   ├── index.html           estructura de la app e iconos SVG
+│   ├── styles.css           sistema visual, temas claro y oscuro, diseño adaptable
+│   ├── app.js               acceso, rutas, panel, facturas y configuración
+│   └── graficos.js          gráficos SVG sin dependencias
+├── tests/
+│   ├── test_unidad.py       pruebas unitarias del procesamiento
+│   ├── test_auth.py         pruebas de inicio de sesión y protección de la API
+│   ├── frontend/            pruebas de la interfaz, datos de demostración, capturas y reporte
+│   └── docs/                11 documentos de prueba y resultados esperados
+├── scripts/                 subir pruebas a Drive, ver la hoja y publicar en Cloudflare
 ├── diseno/                  diagrama interactivo del flujo
-├── data/                    (se crea solo, no se versiona) config.json, estado.db, secretos
-├── .env.example             plantilla de claves
-├── CHANGELOG.md             historial de cambios
-├── DECISIONES.md            registro de decisiones de diseño
-└── requirements.txt         dependencias de Python
+├── docs/capturas/           capturas del README
+├── data/                    (se crea solo, no se versiona) configuración, estado y secretos
+├── CHANGELOG.md · DECISIONES.md · requirements.txt · requirements-dev.txt · .env.example
 ```
 
 ## Seguridad
 
-- La app escucha **solo en `localhost`** y no tiene inicio de sesión: está pensada para uso personal en un equipo. Para exponerla en red hay que agregar autenticación.
-- Las claves escritas en la app se guardan **cifradas** (Fernet); el navegador nunca recibe una clave completa.
-- `.env` y `data/` están excluidos del control de versiones.
-- En Google Drive el sistema opera **únicamente** sobre la carpeta «Facturas IA» y sus subcarpetas; antes de descargar o mover un archivo comprueba que sigue dentro de ella.
+- **Inicio de sesión obligatorio.** Contraseñas con scrypt, cookie `HttpOnly` y `SameSite=Lax` (y `Secure` por HTTPS), sesiones de 12 horas y bloqueo de 5 minutos tras 5 intentos fallidos.
+- **La primera cuenta solo se crea desde el mismo equipo**, nunca a través del túnel.
+- Peticiones que modifican datos desde otro origen rechazadas, y cabeceras `X-Frame-Options`, `X-Content-Type-Options` y `Referrer-Policy`.
+- Claves de API cifradas en reposo; el navegador nunca recibe una completa.
+- La app escucha solo en `127.0.0.1`; el acceso externo pasa por Cloudflare con HTTPS.
+- En Google Drive opera **únicamente** sobre la carpeta «Facturas IA» y sus subcarpetas.
+- `.env` y `data/` no se versionan.
 
 ## Solución de problemas
 
 | Síntoma | Causa probable | Qué hacer |
 |---------|----------------|-----------|
-| Aviso «Proceso detenido: ningún modelo disponible» | Ollama apagado, API key inválida o sin saldo | Revisa el error de cada modelo en el aviso; inicia Ollama (`ollama serve`) o corrige la clave. Las facturas siguen pendientes. |
-| El OCR tarda más de un minuto por página | GLM-OCR corre en CPU | Es esperado; reduce `lado_maximo_px` en la configuración del modelo o usa PDFs con capa de texto. |
-| Error 429 de Google Sheets | Límite de lecturas por minuto | El sistema reintenta solo (15, 30 y 60 s). Reduce el máximo por corrida si se repite. |
-| «Hay dos carpetas llamadas Facturas IA» | Nombre ambiguo en Drive | Renombra o elimina una de ellas. |
-| Una factura correcta va a revisión | Tolerancias demasiado estrictas o catálogo incompleto | Revisa las reglas de validación en el detalle de la factura y ajusta *Configuración → Validación*. |
-
-## Limitaciones conocidas
-
-- Los avisos se muestran solo en el panel; no se envían correos.
-- Se procesan como máximo 5 páginas por documento.
-- El catálogo inicial es de ejemplo y coincide con los documentos de prueba.
+| «Proceso detenido: ningún modelo disponible» | Ollama apagado, API key inválida o sin saldo | Revisa el error de cada modelo en la alerta; inicia Ollama o corrige la clave. Las facturas siguen pendientes. |
+| «Falta crear la cuenta» al entrar por el subdominio | Todavía no hay cuenta | Créala en `http://localhost:8000` desde el equipo, o con `python -m app.auth crear-usuario`. |
+| «Demasiados intentos» | 5 contraseñas incorrectas en 5 minutos | Espera 5 minutos. Si la olvidaste, cámbiala con `python -m app.auth crear-usuario <usuario>`. |
+| El subdominio muestra el error 1033 o 502 de Cloudflare | El túnel o la app no están corriendo | Inicia la app y luego `.\scripts\publicar_cloudflare.ps1`. |
+| El OCR tarda más de un minuto por página | GLM-OCR corre en CPU | Es lo esperado; reduce el lado máximo de imagen del modelo o usa PDF con texto. |
+| Error 429 de Google Sheets | Límite de lecturas por minuto | El sistema reintenta solo; baja el máximo por corrida si se repite. |
 
 ## Documentación relacionada
 
 - [CHANGELOG.md](CHANGELOG.md): historial de versiones.
-- [DECISIONES.md](DECISIONES.md): las 36 decisiones de diseño, con su motivo y dónde se cambian.
+- [DECISIONES.md](DECISIONES.md): las 46 decisiones de diseño, con su motivo y dónde se cambian.
+- [tests/frontend/REPORTE_PRUEBAS.md](tests/frontend/REPORTE_PRUEBAS.md): pruebas de la interfaz y defectos corregidos.
 - [diseno/flujo-facturas-ia.html](diseno/flujo-facturas-ia.html): diagrama interactivo del flujo.

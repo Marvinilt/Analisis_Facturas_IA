@@ -1,0 +1,65 @@
+{
+  "factura_01_ferreteria.pdf": {
+    "resultado": "procesada",
+    "numero_factura": "F001-000457",
+    "total": 1130.0,
+    "subtotal": 1000.0,
+    "total_catalogo": 640.0,
+    "lineas_catalogo": 3
+  },
+  "factura_02_distribuidora.jpg": {
+    "resultado": "procesada",
+    "numero_factura": "A-2026-01893",
+    "total": 371.66,
+    "subtotal": 328.9,
+    "total_catalogo": 184.2,
+    "lineas_catalogo": 2
+  },
+  "factura_03_papeleria.png": {
+    "resultado": "procesada",
+    "numero_factura": "PC-88213",
+    "total": 298.26,
+    "subtotal": 263.95,
+    "total_catalogo": 0.0,
+    "lineas_catalogo": 0
+  },
+  "factura_04_escaneada.pdf": {
+    "resultado": "procesada",
+    "numero_factura": "MR-004211",
+    "total": 5857.0,
+    "subtotal": 5177.21,
+    "total_catalogo": 1129.45,
+    "lineas_catalogo": 3
+  },
+  "factura_05_totales_erroneos.pdf": {
+    "resultado": "revision",
+    "motivo": "montos"
+  },
+  "factura_06_descuentos.jpg": {
+    "resultado": "procesada",
+    "numero_factura": "PA-10477",
+    "total": 751.87,
+    "subtotal": 652.1,
+    "total_catalogo": 532.0,
+    "lineas_catalogo": 2
+  },
+  "foto_borrosa.jpg": {
+    "resultado": "revision",
+    "motivo": "ilegible"
+  },
+  "documento_protegido.pdf": {
+    "resultado": "revision",
+    "motivo": "dañado"
+  },
+  "no_es_factura.jpg": {
+    "resultado": "revision",
+    "motivo": "no es factura"
+  },
+  "factura_01_copia.pdf": {
+    "resultado": "revision",
+    "motivo": "duplicado"
+  },
+  "notas.txt": {
+    "resultado": "ignorado"
+  }
+}

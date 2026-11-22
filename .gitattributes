@@ -1,0 +1,11 @@
+# Normaliza finales de línea en archivos de texto
+* text=auto
+
+# Binarios: nunca convertir finales de línea
+*.pdf  binary
+*.jpg  binary
+*.jpeg binary
+*.png  binary
+*.webp binary
+*.xlsx binary
+*.db   binary

@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Facturas IA</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='6' y='3' width='20' height='26' rx='3' fill='%23145DA0'/%3E%3Cpath d='M11 11h10M11 16h10M11 21h6' stroke='white' stroke-width='2.2' stroke-linecap='round'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="/web/styles.css">
+</head>
+<body>
+<header class="top">
+  <div class="wrap top-in">
+    <div class="brand">
+      <svg viewBox="0 0 32 32" aria-hidden="true"><rect x="6" y="3" width="20" height="26" rx="3"/><path d="M11 11h10M11 16h10M11 21h6"/></svg>
+      <div><b>Facturas IA</b><span id="subtitulo">Procesamiento desde Google Drive</span></div>
+    </div>
+    <nav class="tabs" role="tablist">
+      <button role="tab" data-tab="panel" aria-selected="true">Panel</button>
+      <button role="tab" data-tab="facturas">Facturas</button>
+      <button role="tab" data-tab="config">Configuración</button>
+      <a href="/diseno/flujo-facturas-ia.html" target="_blank" rel="noopener">Diagrama ↗</a>
+    </nav>
+    <div class="run">
+      <span class="estado-run" id="estadoRun">—</span>
+      <button class="btn primario" id="bProcesar" type="button">Procesar ahora</button>
+    </div>
+  </div>
+</header>
+
+<main class="wrap">
+  <!-- PANEL -->
+  <section id="tab-panel" class="tab">
+    <div id="alertas"></div>
+    <div class="contadores">
+      <div class="cont c-pend"><span>Pendientes en <b id="nEntrada">Facturas IA</b></span><strong id="cPend">—</strong><small id="cIgn"></small></div>
+      <div class="cont c-proc"><span>Procesadas</span><strong id="cProc">—</strong><small>en la subcarpeta <b id="nProc">Procesadas</b></small></div>
+      <div class="cont c-rev"><span>En revisión manual</span><strong id="cRev">—</strong><small>en la subcarpeta <b id="nRev">Revisión manual</b></small></div>
+      <div class="cont c-hoja"><span>Hoja de resultados</span><a id="lHoja" target="_blank" rel="noopener">—</a><small id="cAct">Sin datos todavía</small></div>
+    </div>
+
+    <div class="grid2">
+      <div class="card">
+        <div class="card-h"><h2>Proceso</h2><button class="btn" id="bDetener" type="button" hidden>Detener después de esta factura</button></div>
+        <div id="procesoInfo" class="proceso"></div>
+      </div>
+      <div class="card">
+        <div class="card-h"><h2>Últimas corridas</h2><button class="btn ghost" id="bContar" type="button">Actualizar conteo</button></div>
+        <div class="tabla-wrap"><table class="tabla" id="tCorridas"><thead><tr><th>Inicio</th><th>Origen</th><th>Estado</th><th class="n">Nuevas</th><th class="n">Procesadas</th><th class="n">Revisión</th></tr></thead><tbody></tbody></table></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-h"><h2>Bitácora de la última corrida</h2><span class="muted" id="bitInfo"></span></div>
+      <ol class="bitacora" id="bitacora"></ol>
+    </div>
+  </section>
+
+  <!-- FACTURAS -->
+  <section id="tab-facturas" class="tab" hidden>
+    <div class="card">
+      <div class="card-h">
+        <h2>Facturas registradas</h2>
+        <div class="filtros" role="group" aria-label="Filtrar por estado">
+          <button class="chip on" data-f="">Todas</button>
+          <button class="chip" data-f="procesada">Procesadas</button>
+          <button class="chip" data-f="revision">Revisión</button>
+          <button class="chip" data-f="pendiente">Pendientes</button>
+        </div>
+      </div>
+      <div class="tabla-wrap"><table class="tabla" id="tFacturas"><thead><tr><th>Archivo</th><th>Estado</th><th>N° factura</th><th>Emisor</th><th class="n">Total</th><th class="n">Total catálogo</th><th>Modelo</th><th>Actualizado</th></tr></thead><tbody></tbody></table></div>
+    </div>
+  </section>
+
+  <!-- CONFIGURACIÓN -->
+  <section id="tab-config" class="tab" hidden>
+    <div class="config">
+      <nav class="cnav" id="cnav">
+        <button data-c="conexion" class="on">Conexión</button>
+        <button data-c="carpetas">Carpetas y archivo</button>
+        <button data-c="frecuencia">Frecuencia</button>
+        <button data-c="modelos">Modelos y API keys</button>
+        <button data-c="esquema">Esquema de factura</button>
+        <button data-c="validacion">Reglas de validación</button>
+        <button data-c="catalogo">Catálogo de productos</button>
+        <button data-c="probar">Probar extracción</button>
+      </nav>
+      <div class="cpanel card" id="cpanel"></div>
+    </div>
+  </section>
+</main>
+
+<aside class="drawer" id="drawer" hidden>
+  <div class="drawer-in">
+    <div class="drawer-h"><h2 id="dTitulo">Factura</h2><button class="btn ghost" id="dCerrar" type="button">Cerrar</button></div>
+    <div id="dCuerpo"></div>
+  </div>
+</aside>
+<div class="toast" id="toast" role="status" hidden></div>
+
+<script src="/web/app.js"></script>
+</body>
+</html>

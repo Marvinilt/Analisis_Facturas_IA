@@ -1,0 +1,27 @@
+# Secretos y configuración local
+.env
+.env.*
+!.env.example
+
+# Datos en tiempo de ejecución (config.json, estado.db, secretos cifrados, carpeta local simulada)
+data/
+
+# Entorno y cachés de Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Herramientas locales
+.claude/
+.vscode/
+.idea/
+*.log
+
+# Sistema operativo
+Thumbs.db
+Desktop.ini
+.DS_Store

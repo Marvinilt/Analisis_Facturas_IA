@@ -1,84 +1,81 @@
 ﻿<#
 .SYNOPSIS
-  Publica Facturas IA en un subdominio propio con Cloudflare Tunnel.
+  Publica Facturas IA en un subdominio propio con Cloudflare (Wrangler + túnel + Workers VPC).
 
 .DESCRIPTION
-  Con -Configurar (una sola vez): inicia sesión en Cloudflare si hace falta, crea el túnel,
-  escribe ~/.cloudflared/<túnel>.yml y crea el registro DNS del subdominio.
-  Sin parámetros: comprueba que la app responda y publica el túnel hasta que pulses Ctrl+C.
+  Arquitectura:  navegador -> Worker «facturas-ia» (dominio propio, HTTPS)
+                 -> Workers VPC «facturas-ia-app» -> túnel «facturas-ia» -> http://127.0.0.1:8000
+
+  No necesita permisos de DNS: el dominio propio del Worker crea su registro solo.
+
+  Con -Configurar (una sola vez): crea el túnel y el servicio VPC si no existen, escribe el ID del
+  servicio en deploy/cloudflare/wrangler.jsonc y despliega el Worker.
+  Sin parámetros: comprueba que la app responda y conecta el túnel hasta que pulses Ctrl+C.
+
+  Requiere Wrangler con la sesión iniciada (wrangler login).
 
 .EXAMPLE
   .\scripts\publicar_cloudflare.ps1 -Configurar
   .\scripts\publicar_cloudflare.ps1
-  .\scripts\publicar_cloudflare.ps1 -Configurar -Subdominio facturas-demo -Dominio ejemplo.com
 #>
 param(
   [switch]$Configurar,
-  [string]$Subdominio = "facturas",
-  [string]$Dominio = "marvinlt.cloud",
   [string]$Tunel = "facturas-ia",
+  [string]$ServicioVpc = "facturas-ia-app",
   [int]$Puerto = 8000
 )
 $ErrorActionPreference = "Stop"
+$raiz = Split-Path -Parent $PSScriptRoot
+$worker = Join-Path $raiz "deploy\cloudflare"
 
-function Find-Cloudflared {
-  $cmd = Get-Command cloudflared -ErrorAction SilentlyContinue
-  if ($cmd) { return $cmd.Source }
-  foreach ($p in @("$env:ProgramFiles\cloudflared\cloudflared.exe", "${env:ProgramFiles(x86)}\cloudflared\cloudflared.exe",
-                   "$env:LOCALAPPDATA\Microsoft\WinGet\Links\cloudflared.exe")) {
-    if (Test-Path $p) { return $p }
-  }
-  throw "No se encontró cloudflared. Instálalo con: winget install --id Cloudflare.cloudflared"
+if (-not (Get-Command wrangler -ErrorAction SilentlyContinue)) {
+  throw "No se encontró Wrangler. Instálalo con: npm install -g wrangler, y luego: wrangler login"
 }
 
-function Get-Tunel([string]$cf, [string]$nombre) {
-  $json = & $cf tunnel list --output json 2>$null
-  if (-not $json) { return $null }
-  return ($json | ConvertFrom-Json) | Where-Object { $_.name -eq $nombre } | Select-Object -First 1
+function Get-IdTunel {
+  $salida = wrangler tunnel list 2>&1 | Out-String
+  # Tabla de wrangler: | id | name | status | ...
+  $m = [regex]::Match($salida, "([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\W+$([regex]::Escape($Tunel))\s*[^\w-]")
+  if ($m.Success) { return $m.Groups[1].Value }
+  return $null
 }
-
-$cf = Find-Cloudflared
-$dir = Join-Path $HOME ".cloudflared"
-$hostname = "$Subdominio.$Dominio"
-$config = Join-Path $dir "$Tunel.yml"
 
 if ($Configurar) {
-  if (-not (Test-Path (Join-Path $dir "cert.pem"))) {
-    Write-Host "Se abrirá el navegador para autorizar el dominio $Dominio en tu cuenta de Cloudflare."
-    & $cf tunnel login
+  $id = Get-IdTunel
+  if (-not $id) {
+    $salida = wrangler tunnel create $Tunel 2>&1 | Out-String
+    $id = [regex]::Match($salida, "ID:\s*([0-9a-f-]{36})").Groups[1].Value
   }
-  $t = Get-Tunel $cf $Tunel
-  if (-not $t) {
-    & $cf tunnel create $Tunel | Out-Host
-    $t = Get-Tunel $cf $Tunel
+  if (-not $id) { throw "No se pudo crear ni encontrar el túnel $Tunel." }
+  Write-Host "Túnel $Tunel`: $id"
+
+  $lista = wrangler vpc service list 2>&1 | Out-String
+  $svc = [regex]::Match($lista, "([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\W+$([regex]::Escape($ServicioVpc))\s*[^\w-]").Groups[1].Value
+  if (-not $svc) {
+    $salida = wrangler vpc service create $ServicioVpc --type http --tunnel-id $id --ipv4 127.0.0.1 --http-port $Puerto 2>&1 | Out-String
+    $svc = [regex]::Match($salida, "VPC service:\s*([0-9a-f-]{36})").Groups[1].Value
   }
-  if (-not $t) { throw "No se pudo crear el túnel $Tunel." }
-  $cred = Join-Path $dir "$($t.id).json"
-  $yaml = @"
-tunnel: $($t.id)
-credentials-file: $cred
-ingress:
-  - hostname: $hostname
-    service: http://127.0.0.1:$Puerto
-  - service: http_status:404
-"@
-  # Sin BOM: el lector YAML de cloudflared no lo acepta.
-  [IO.File]::WriteAllText($config, $yaml, (New-Object Text.UTF8Encoding $false))
-  # Sin --overwrite-dns: si ya existe un registro con ese nombre, no se pisa.
-  & $cf tunnel route dns $Tunel $hostname | Out-Host
-  Write-Host "Listo: https://$hostname -> http://127.0.0.1:$Puerto (túnel $Tunel, configuración en $config)."
-  Write-Host "Para publicar: .\scripts\publicar_cloudflare.ps1"
+  if (-not $svc) { throw "No se pudo crear ni encontrar el servicio VPC $ServicioVpc." }
+  Write-Host "Servicio VPC $ServicioVpc`: $svc"
+
+  $cfg = Join-Path $worker "wrangler.jsonc"
+  $texto = [IO.File]::ReadAllText($cfg)
+  $texto = [regex]::Replace($texto, '"service_id":\s*"[^"]*"', "`"service_id`": `"$svc`"")
+  [IO.File]::WriteAllText($cfg, $texto, (New-Object Text.UTF8Encoding $false))
+
+  Push-Location $worker
+  try { wrangler deploy } finally { Pop-Location }
+  Write-Host "Listo. Para publicar: .\scripts\publicar_cloudflare.ps1"
   return
 }
 
-if (-not (Test-Path $config)) {
-  throw "Falta la configuración del túnel. Ejecuta primero: .\scripts\publicar_cloudflare.ps1 -Configurar"
-}
 try {
   Invoke-WebRequest "http://127.0.0.1:$Puerto/api/auth/estado" -UseBasicParsing -TimeoutSec 3 | Out-Null
 } catch {
   Write-Warning "La app no responde en el puerto $Puerto. Iníciala en otra terminal con:"
   Write-Warning "  .venv\Scripts\python -m uvicorn app.main:app --host 127.0.0.1 --port $Puerto"
 }
-Write-Host "Publicando https://$hostname (Ctrl+C para detener)."
-& $cf tunnel --config $config run $Tunel
+$id = Get-IdTunel
+if (-not $id) { throw "No existe el túnel $Tunel. Ejecuta primero: .\scripts\publicar_cloudflare.ps1 -Configurar" }
+Write-Host "Conectando el túnel $Tunel ($id). Ctrl+C para detener."
+wrangler tunnel run $id

@@ -54,7 +54,10 @@ Rediseño completo del frontend, inicio de sesión, panel de indicadores con gr�
 
 #### Publicación
 
-- Script `scripts/publicar_cloudflare.ps1` para crear el túnel, el registro DNS del subdominio y la configuración (`-Configurar`), y para publicar el sistema (D-45).
+- Sistema publicado en **https://facturas.marvinlt.cloud** con un Worker de Cloudflare con dominio propio (`deploy/cloudflare/`), un servicio de Workers VPC y el túnel `facturas-ia`. Sin abrir puertos y sin permiso para editar DNS (D-45).
+- El Worker fija las cabeceras de origen (`CF-Connecting-IP`, `X-Forwarded-*`), agrega HSTS y muestra una página de «no disponible» cuando el equipo está apagado.
+- Script `scripts/publicar_cloudflare.ps1`: con `-Configurar` crea el túnel y el servicio VPC y despliega el Worker; sin parámetros conecta el túnel.
+- La comprobación de origen acepta `X-Forwarded-Host` para funcionar detrás del Worker (D-47).
 
 #### Pruebas y documentación
 

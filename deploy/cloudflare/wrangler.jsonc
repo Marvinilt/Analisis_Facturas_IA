@@ -1,0 +1,12 @@
+{
+  // Worker que publica Facturas IA en facturas.marvinlt.cloud.
+  // El tráfico llega a la app local (127.0.0.1:8000) por Workers VPC a través del túnel «facturas-ia».
+  "name": "facturas-ia",
+  "main": "src/index.js",
+  "compatibility_date": "2026-10-01",
+  "routes": [{ "pattern": "facturas.marvinlt.cloud", "custom_domain": true }],
+  "vpc_services": [
+    { "binding": "APP", "service_id": "01a203ec-fe72-77f0-86d4-16e502c477f3", "remote": true }
+  ],
+  "observability": { "enabled": true }
+}

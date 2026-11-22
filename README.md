@@ -86,14 +86,15 @@ Si ningún modelo está disponible, el proceso **se detiene** y la factura queda
 | **Facturas** | Tabla con filtros por estado, búsqueda, orden por columna, paginación, exportación a CSV y detalle completo en un panel lateral. |
 | **Interfaz** | Inicio de sesión, menú lateral contraíble, tema claro y oscuro, diseño adaptable a escritorio, tableta y móvil, y navegación con teclado. |
 | **Resiliencia** | Escritura idempotente, movimiento solo después de registrar, recuperación tras un corte y reintentos ante el límite de cuota de Google. |
-| **Publicación** | Cloudflare Tunnel con HTTPS en un subdominio propio, sin abrir puertos. |
+| **Publicación** | En <https://facturas.marvinlt.cloud> con un Worker de Cloudflare, Workers VPC y un túnel: HTTPS y sin abrir puertos. |
 
 ## Arquitectura
 
 ```mermaid
 flowchart LR
-    U(["Navegador"]) -- HTTPS --> CF["Cloudflare<br/>facturas.marvinlt.cloud"]
-    CF -- túnel cifrado --> T["cloudflared"]
+    U(["Navegador"]) -- HTTPS --> W["Worker de Cloudflare<br/>facturas.marvinlt.cloud"]
+    W -- Workers VPC --> VPC["Servicio VPC<br/>facturas-ia-app"]
+    VPC -- túnel cifrado --> T["cloudflared<br/>túnel facturas-ia"]
     U -. localhost .-> API
 
     subgraph Equipo["Equipo local"]
@@ -126,7 +127,7 @@ flowchart LR
 | Frontend | HTML, CSS y JavaScript sin dependencias ni compilación. Gráficos SVG propios (`web/graficos.js`). |
 | IA | GLM-OCR en Ollama (local, CPU) y OpenAI con salida estructurada estricta. |
 | Google | Drive y Sheets mediante Composio Connect (MCP), limitado a la carpeta «Facturas IA». |
-| Publicación | Cloudflare Tunnel (`cloudflared`). |
+| Publicación | Worker de Cloudflare con dominio propio, Workers VPC y Cloudflare Tunnel, gestionados con Wrangler (`deploy/cloudflare/`). |
 
 El diagrama interactivo del flujo está en [diseno/flujo-facturas-ia.html](diseno/flujo-facturas-ia.html), y en la app, en *Diagrama del flujo*.
 
@@ -156,7 +157,7 @@ El diagrama interactivo del flujo está en [diseno/flujo-facturas-ia.html](disen
 | **[Ollama](https://ollama.com)** con el modelo `glm-ocr` (2,2 GB) | OCR gratis en local. En CPU tarda unos 45–60 s por página de imagen; los PDF con texto no lo necesitan. |
 | **API key de OpenAI** | Estructurador y modelo de respaldo. |
 | **API key de Composio Connect** (`ck_…`) | Con Google Drive y Google Sheets conectados en [composio.dev](https://composio.dev). |
-| *Opcional:* **[cloudflared](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/)** y un dominio en Cloudflare | Publicar el sistema en internet. |
+| *Opcional:* **[Wrangler](https://developers.cloudflare.com/workers/wrangler/)** con la sesión iniciada y un dominio en Cloudflare | Publicar el sistema en internet. Wrangler descarga `cloudflared` solo. |
 | *Opcional:* Microsoft Edge o Google Chrome | Pruebas de la interfaz con Playwright. |
 
 ## Instalación
@@ -229,25 +230,34 @@ Abre <http://localhost:8000>, inicia sesión y usa **Procesar ahora**, o activa 
 
 ## Publicación en Cloudflare
 
-El sistema necesita Ollama, SQLite y un planificador en segundo plano, así que no puede correr en Cloudflare Pages ni en Workers. Se publica con **Cloudflare Tunnel**: `cloudflared` abre una conexión de salida hacia Cloudflare y sirve `http://localhost:8000` con HTTPS en un subdominio, sin abrir puertos en el router.
+**En línea:** <https://facturas.marvinlt.cloud>, protegido por el inicio de sesión.
 
-**Una sola vez** (requiere el dominio en tu cuenta de Cloudflare):
+El sistema necesita Ollama, SQLite y un planificador en segundo plano, así que no puede correr dentro de Cloudflare. Lo que se publica es el equipo donde ya funciona, sin abrir puertos en el router:
+
+```
+navegador ─HTTPS─► Worker «facturas-ia» ─► Workers VPC «facturas-ia-app» ─► túnel «facturas-ia» ─► 127.0.0.1:8000
+                   (facturas.marvinlt.cloud)
+```
+
+- El **Worker** ([deploy/cloudflare/](deploy/cloudflare/)) atiende el dominio propio y reenvía cada petición por **Workers VPC**. Fija las cabeceras `CF-Connecting-IP`, `X-Forwarded-For`, `X-Forwarded-Proto` y `X-Forwarded-Host`, pisando lo que mande el cliente: con ellas la app sabe que la petición viene de internet. Si el equipo está apagado, muestra una página de «no disponible».
+- El **túnel** abre una conexión de salida desde el equipo hacia Cloudflare.
+- El dominio propio del Worker crea su registro DNS solo, así que **no hace falta permiso para editar DNS**.
+
+**Una sola vez** (con `wrangler login` hecho):
 
 ```powershell
-winget install --id Cloudflare.cloudflared
-cloudflared tunnel login   # abre el navegador para autorizar el dominio
 .\scripts\publicar_cloudflare.ps1 -Configurar
 ```
 
-`-Configurar` crea el túnel `facturas-ia`, el registro DNS `facturas.marvinlt.cloud` y el archivo `~/.cloudflared/facturas-ia.yml`. Para otro subdominio, usa `-Subdominio` y `-Dominio`.
+Crea el túnel y el servicio VPC si no existen, escribe el ID del servicio en `deploy/cloudflare/wrangler.jsonc` y despliega el Worker. Para otro dominio, cambia `routes` en ese archivo.
 
-**Cada vez que quieras publicar** (con la app ya corriendo):
+**Cada vez que enciendas el equipo** (con la app ya corriendo):
 
 ```powershell
 .\scripts\publicar_cloudflare.ps1
 ```
 
-El sistema queda en **https://facturas.marvinlt.cloud**, protegido por el inicio de sesión. Para una capa más, puedes poner [Cloudflare Access](https://developers.cloudflare.com/cloudflare-one/applications/) delante del subdominio.
+Conecta el túnel hasta que pulses Ctrl+C. Para una capa más de protección, puedes poner [Cloudflare Access](https://developers.cloudflare.com/cloudflare-one/applications/) delante del dominio.
 
 ## La interfaz
 
@@ -336,6 +346,7 @@ $env:FACTURAS_IA_DATA = "C:\temp\facturas-demo"; .venv\Scripts\python -m uvicorn
 │   ├── frontend/            pruebas de la interfaz, datos de demostración, capturas y reporte
 │   └── docs/                11 documentos de prueba y resultados esperados
 ├── scripts/                 subir pruebas a Drive, ver la hoja y publicar en Cloudflare
+├── deploy/cloudflare/       Worker que publica la app en el dominio propio
 ├── diseno/                  diagrama interactivo del flujo
 ├── docs/capturas/           capturas del README
 ├── data/                    (se crea solo, no se versiona) configuración, estado y secretos
@@ -359,13 +370,13 @@ $env:FACTURAS_IA_DATA = "C:\temp\facturas-demo"; .venv\Scripts\python -m uvicorn
 | «Proceso detenido: ningún modelo disponible» | Ollama apagado, API key inválida o sin saldo | Revisa el error de cada modelo en la alerta; inicia Ollama o corrige la clave. Las facturas siguen pendientes. |
 | «Falta crear la cuenta» al entrar por el subdominio | Todavía no hay cuenta | Créala en `http://localhost:8000` desde el equipo, o con `python -m app.auth crear-usuario`. |
 | «Demasiados intentos» | 5 contraseñas incorrectas en 5 minutos | Espera 5 minutos. Si la olvidaste, cámbiala con `python -m app.auth crear-usuario <usuario>`. |
-| El subdominio muestra el error 1033 o 502 de Cloudflare | El túnel o la app no están corriendo | Inicia la app y luego `.\scripts\publicar_cloudflare.ps1`. |
+| El subdominio muestra «Facturas IA no está disponible ahora» | El túnel o la app no están corriendo | Inicia la app y luego `.\scripts\publicar_cloudflare.ps1`. |
 | El OCR tarda más de un minuto por página | GLM-OCR corre en CPU | Es lo esperado; reduce el lado máximo de imagen del modelo o usa PDF con texto. |
 | Error 429 de Google Sheets | Límite de lecturas por minuto | El sistema reintenta solo; baja el máximo por corrida si se repite. |
 
 ## Documentación relacionada
 
 - [CHANGELOG.md](CHANGELOG.md): historial de versiones.
-- [DECISIONES.md](DECISIONES.md): las 46 decisiones de diseño, con su motivo y dónde se cambian.
+- [DECISIONES.md](DECISIONES.md): las 47 decisiones de diseño, con su motivo y dónde se cambian.
 - [tests/frontend/REPORTE_PRUEBAS.md](tests/frontend/REPORTE_PRUEBAS.md): pruebas de la interfaz y defectos corregidos.
 - [diseno/flujo-facturas-ia.html](diseno/flujo-facturas-ia.html): diagrama interactivo del flujo.

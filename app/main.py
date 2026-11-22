@@ -46,7 +46,9 @@ async def proteger(request: Request, llamar):
     ruta = request.url.path
     if request.method not in ("GET", "HEAD", "OPTIONS"):
         origen = request.headers.get("origin")
-        if origen and origen.split("://", 1)[-1] != request.headers.get("host"):
+        # Detrás del Worker de Cloudflare el Host es 127.0.0.1:8000 y el dominio público llega en X-Forwarded-Host.
+        propios = {request.headers.get("host"), request.headers.get("x-forwarded-host")}
+        if origen and origen.split("://", 1)[-1] not in propios:
             return JSONResponse({"detail": "Origen no permitido."}, status_code=403)
     if ruta != "/" and not ruta.startswith(PUBLICAS):
         if not auth.usuario_de(request.cookies.get(auth.COOKIE)):

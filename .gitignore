@@ -25,3 +25,7 @@ htmlcov/
 Thumbs.db
 Desktop.ini
 .DS_Store
+
+# Cloudflare / Wrangler
+.wrangler/
+node_modules/

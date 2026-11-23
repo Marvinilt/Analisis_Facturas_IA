@@ -1,0 +1,278 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Facturas IA</title>
+<meta name="color-scheme" content="light dark">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%234B3FD1'/%3E%3Cpath d='M10 7h12v18l-3-2-3 2-3-2-3 2z' fill='white'/%3E%3Cpath d='M13 12h6M13 16h6' stroke='%234B3FD1' stroke-width='1.8' stroke-linecap='round'/%3E%3C/svg%3E">
+<script>
+  // Tema antes de pintar, para no parpadear.
+  try { const t = localStorage.getItem("tema"); if (t) document.documentElement.dataset.theme = t; } catch (e) { /* sin almacenamiento */ }
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,600;12..96,700;12..96,800&family=Figtree:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="/web/styles.css">
+</head>
+<body>
+
+<!-- Iconos -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="i-logo" viewBox="0 0 32 32"><path d="M9 5h14v22l-3.5-2.4L16 27l-3.5-2.4L9 27z" fill="currentColor"/><path d="M12.5 11h7M12.5 15h7M12.5 19h4" stroke="var(--logo-ink,#fff)" stroke-width="1.9" stroke-linecap="round" fill="none"/></symbol>
+    <symbol id="i-panel" viewBox="0 0 24 24"><rect x="3" y="3" width="7.5" height="9" rx="2"/><rect x="13.5" y="3" width="7.5" height="5" rx="2"/><rect x="13.5" y="11" width="7.5" height="10" rx="2"/><rect x="3" y="15" width="7.5" height="6" rx="2"/></symbol>
+    <symbol id="i-facturas" viewBox="0 0 24 24"><path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"/><path d="M9.5 8h5M9.5 12h5"/></symbol>
+    <symbol id="i-config" viewBox="0 0 24 24"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2.2"/><circle cx="10" cy="17" r="2.2"/></symbol>
+    <symbol id="i-flujo" viewBox="0 0 24 24"><rect x="3" y="4" width="6" height="5" rx="1.5"/><rect x="15" y="4" width="6" height="5" rx="1.5"/><rect x="9" y="15" width="6" height="5" rx="1.5"/><path d="M9 6.5h6M18 9v3H12v3"/></symbol>
+    <symbol id="i-play" viewBox="0 0 24 24"><path d="M8 5.5v13l11-6.5z" fill="currentColor"/></symbol>
+    <symbol id="i-stop" viewBox="0 0 24 24"><rect x="6.5" y="6.5" width="11" height="11" rx="2"/></symbol>
+    <symbol id="i-sol" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2M12 19.5v2M4.6 4.6 6 6M18 18l1.4 1.4M2.5 12h2M19.5 12h2M4.6 19.4 6 18M18 6l1.4-1.4"/></symbol>
+    <symbol id="i-luna" viewBox="0 0 24 24"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/></symbol>
+    <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h10"/></symbol>
+    <symbol id="i-colapsar" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M9 4v16M15.5 10l-2 2 2 2"/></symbol>
+    <symbol id="i-salir" viewBox="0 0 24 24"><path d="M14 4h4a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-4M10 16l-4-4 4-4M6 12h10"/></symbol>
+    <symbol id="i-cerrar" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></symbol>
+    <symbol id="i-buscar" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4 4"/></symbol>
+    <symbol id="i-ojo" viewBox="0 0 24 24"><path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="3"/></symbol>
+    <symbol id="i-ojo-no" viewBox="0 0 24 24"><path d="M3 3l18 18M10.6 5.6A9.6 9.6 0 0 1 12 5.5C18 5.5 21.5 12 21.5 12a17 17 0 0 1-3 3.8M6.5 7A16 16 0 0 0 2.5 12S6 18.5 12 18.5a9 9 0 0 0 4-.9"/><path d="M9.9 10a3 3 0 0 0 4.1 4.1"/></symbol>
+    <symbol id="i-ok" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="m8 12.3 2.7 2.7L16 9.5"/></symbol>
+    <symbol id="i-aviso" viewBox="0 0 24 24"><path d="M12 3.5 22 20H2z"/><path d="M12 10v4.5M12 17.3v.2"/></symbol>
+    <symbol id="i-error" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7.5v5.5M12 16.3v.2"/></symbol>
+    <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v5.5M12 7.7v.2"/></symbol>
+    <symbol id="i-reloj" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
+    <symbol id="i-externo" viewBox="0 0 24 24"><path d="M14 4h6v6M20 4l-9 9M18 14v4a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4"/></symbol>
+    <symbol id="i-refrescar" viewBox="0 0 24 24"><path d="M20 11a8 8 0 0 0-14.3-4.9L4 8M4 4v4h4M4 13a8 8 0 0 0 14.3 4.9L20 16M20 20v-4h-4"/></symbol>
+    <symbol id="i-descargar" viewBox="0 0 24 24"><path d="M12 4v11M7.5 10.5 12 15l4.5-4.5M5 19h14"/></symbol>
+    <symbol id="i-flecha" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></symbol>
+    <symbol id="i-orden" viewBox="0 0 24 24"><path d="m8 9 4-4 4 4M8 15l4 4 4-4"/></symbol>
+    <symbol id="i-candado" viewBox="0 0 24 24"><rect x="4.5" y="10.5" width="15" height="10" rx="2.5"/><path d="M8 10.5V8a4 4 0 0 1 8 0v2.5"/></symbol>
+    <symbol id="i-usuario" viewBox="0 0 24 24"><circle cx="12" cy="8.5" r="4"/><path d="M4.5 20.5a7.5 7.5 0 0 1 15 0"/></symbol>
+    <symbol id="i-hoja" viewBox="0 0 24 24"><rect x="4" y="3" width="16" height="18" rx="2.5"/><path d="M4 9h16M4 15h16M10 9v12"/></symbol>
+    <symbol id="i-carpeta" viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2.5h8a2 2 0 0 1 2 2V18a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></symbol>
+    <symbol id="i-chip" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2.5"/><path d="M9.5 3v3M14.5 3v3M9.5 18v3M14.5 18v3M3 9.5h3M3 14.5h3M18 9.5h3M18 14.5h3"/></symbol>
+    <symbol id="i-escudo" viewBox="0 0 24 24"><path d="M12 3 4.5 6v5.5c0 4.6 3.1 8.2 7.5 9.5 4.4-1.3 7.5-4.9 7.5-9.5V6z"/><path d="m9 12 2.2 2.2L15.5 10"/></symbol>
+    <symbol id="i-catalogo" viewBox="0 0 24 24"><path d="M4 7.5 12 3l8 4.5v9L12 21l-8-4.5z"/><path d="M4 7.5 12 12l8-4.5M12 12v9"/></symbol>
+    <symbol id="i-prueba" viewBox="0 0 24 24"><path d="M9 3h6M10 3v6l-5 9.5A1.7 1.7 0 0 0 6.5 21h11a1.7 1.7 0 0 0 1.5-2.5L14 9V3"/><path d="M7.5 15h9"/></symbol>
+    <symbol id="i-enlace" viewBox="0 0 24 24"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/></symbol>
+  </defs>
+</svg>
+
+<!-- ═════════════ INICIO DE SESIÓN ═════════════ -->
+<div class="acceso" id="acceso" hidden>
+  <section class="acceso-arte" aria-hidden="true">
+    <div class="marca-acceso"><svg class="ico-logo"><use href="#i-logo"/></svg><span>Facturas IA</span></div>
+    <div class="escena">
+      <div class="papel">
+        <div class="papel-h"><b>FACTURA</b><span>F001-000457</span></div>
+        <div class="papel-l"><i style="width:62%"></i><i style="width:40%"></i></div>
+        <div class="papel-t">
+          <div><i style="width:58%"></i><i style="width:14%"></i></div>
+          <div><i style="width:46%"></i><i style="width:18%"></i></div>
+          <div><i style="width:52%"></i><i style="width:12%"></i></div>
+          <div><i style="width:38%"></i><i style="width:16%"></i></div>
+        </div>
+        <div class="papel-total"><span>Total</span><b>Q 1,130.00</b></div>
+        <div class="sello">PROCESADA</div>
+        <div class="escaner"></div>
+      </div>
+      <div class="extraido">
+        <div><span>numero_factura</span><b>"F001-000457"</b></div>
+        <div><span>emisor_nombre</span><b>"Ferretería El Martillo"</b></div>
+        <div><span>subtotal</span><b>1000.00</b></div>
+        <div><span>total</span><b>1130.00</b></div>
+        <div class="ok"><span>cuadre de montos</span><b>✓ correcto</b></div>
+      </div>
+    </div>
+    <div class="acceso-lema">
+      <h2>De la carpeta de Drive a la hoja de cálculo, sin teclear una cifra.</h2>
+      <p>Lee cada factura con IA, comprueba que los montos cuadren y separa las que necesitan tu revisión.</p>
+    </div>
+  </section>
+
+  <section class="acceso-form">
+    <form class="form-acceso" id="fAcceso" novalidate>
+      <svg class="ico-logo solo-movil"><use href="#i-logo"/></svg>
+      <h1 id="aTitulo">Inicia sesión</h1>
+      <p class="sub" id="aSub">Entra con tu usuario para ver el panel de facturas.</p>
+      <div class="aviso-acceso" id="aAviso" hidden></div>
+      <label class="campo" id="wCodigo" hidden>Código de configuración
+        <span class="input-ico"><svg><use href="#i-escudo"/></svg><input id="aCodigo" autocomplete="one-time-code" autocapitalize="none" spellcheck="false"></span>
+        <small>Está en el archivo que creó la publicación en Cloudflare. Solo sirve para esta primera cuenta.</small>
+      </label>
+      <label class="campo">Usuario
+        <span class="input-ico"><svg><use href="#i-usuario"/></svg><input id="aUsuario" name="username" autocomplete="username" autocapitalize="none" spellcheck="false" required></span>
+      </label>
+      <label class="campo">Contraseña
+        <span class="input-ico"><svg><use href="#i-candado"/></svg><input id="aClave" name="password" type="password" autocomplete="current-password" required>
+          <button type="button" class="ver-clave" id="aVer" aria-label="Mostrar contraseña"><svg><use href="#i-ojo"/></svg></button></span>
+      </label>
+      <label class="campo" id="wConfirmar" hidden>Repite la contraseña
+        <span class="input-ico"><svg><use href="#i-candado"/></svg><input id="aConfirmar" type="password" autocomplete="new-password"></span>
+      </label>
+      <div class="medidor" id="aMedidor" hidden><i></i><span></span></div>
+      <label class="check" id="wRecordar"><input type="checkbox" id="aRecordar"> Mantener la sesión en este equipo</label>
+      <button class="btn primario grande" id="aEntrar" type="submit">Entrar</button>
+      <p class="nota-acceso" id="aNota"><svg><use href="#i-escudo"/></svg>Conexión protegida. Tras 5 intentos fallidos el acceso se bloquea 5 minutos.</p>
+    </form>
+  </section>
+</div>
+
+<!-- ═════════════ APLICACIÓN ═════════════ -->
+<div class="app" id="app" hidden>
+  <aside class="lateral" id="lateral">
+    <div class="lateral-h">
+      <a class="marca" href="#panel" aria-label="Facturas IA, ir al panel"><svg class="ico-logo"><use href="#i-logo"/></svg><span>Facturas IA</span></a>
+    </div>
+    <nav class="menu" aria-label="Principal">
+      <a href="#panel" data-ruta="panel"><svg><use href="#i-panel"/></svg><span>Panel</span></a>
+      <a href="#facturas" data-ruta="facturas"><svg><use href="#i-facturas"/></svg><span>Facturas</span><em class="contador" id="mRevision" hidden></em></a>
+      <a href="#config" data-ruta="config"><svg><use href="#i-config"/></svg><span>Configuración</span></a>
+      <a href="/diseno/flujo-facturas-ia.html" target="_blank" rel="noopener"><svg><use href="#i-flujo"/></svg><span>Diagrama del flujo</span><svg class="ext"><use href="#i-externo"/></svg></a>
+    </nav>
+    <div class="lateral-estado" id="lEstado"></div>
+    <div class="lateral-pie">
+      <div class="perfil"><span class="avatar" id="avatar">?</span><span class="perfil-n"><b id="pUsuario">—</b><small>Administrador</small></span></div>
+      <button class="icono" id="bSalir" type="button" title="Cerrar sesión" aria-label="Cerrar sesión"><svg><use href="#i-salir"/></svg></button>
+    </div>
+    <button class="colapsar" id="bColapsar" type="button" aria-label="Contraer el menú" title="Contraer el menú"><svg><use href="#i-colapsar"/></svg></button>
+  </aside>
+  <div class="velo" id="velo" hidden></div>
+
+  <div class="principal">
+    <header class="barra">
+      <button class="icono solo-movil" id="bMenu" type="button" aria-label="Abrir menú"><svg><use href="#i-menu"/></svg></button>
+      <div class="barra-t"><h1 id="titulo">Panel</h1><p id="subtitulo">Estado del procesamiento de facturas</p></div>
+      <div class="barra-a">
+        <span class="estado-run" id="estadoRun"><i></i><span>—</span></span>
+        <button class="btn" id="bDetener" type="button" hidden><svg><use href="#i-stop"/></svg><span>Detener</span></button>
+        <button class="btn primario" id="bProcesar" type="button"><svg><use href="#i-play"/></svg><span>Procesar ahora</span></button>
+        <button class="icono tema" id="bTema" type="button" aria-label="Cambiar a tema oscuro" title="Cambiar tema"><svg class="t-sol"><use href="#i-sol"/></svg><svg class="t-luna"><use href="#i-luna"/></svg></button>
+      </div>
+    </header>
+
+    <main class="contenido">
+      <!-- PANEL -->
+      <section id="v-panel" class="vista" hidden>
+        <div id="alertas" class="alertas"></div>
+
+        <div class="recorrido tarjeta" id="recorrido">
+          <div class="recorrido-h">
+            <div><h2>Recorrido de cada factura</h2><p class="muted" id="recInfo">Del periodo seleccionado</p></div>
+            <div class="recorrido-run" id="recRun"></div>
+          </div>
+          <ol class="etapas" id="etapas"></ol>
+        </div>
+
+        <div class="filtros-periodo">
+          <div class="segmentado" id="periodo" role="radiogroup" aria-label="Periodo">
+            <button role="radio" data-dias="7">7 días</button>
+            <button role="radio" data-dias="30" aria-checked="true">30 días</button>
+            <button role="radio" data-dias="90">90 días</button>
+            <button role="radio" data-dias="0">Todo</button>
+          </div>
+          <span class="muted" id="periodoInfo"></span>
+        </div>
+
+        <div class="kpis" id="kpis"></div>
+
+        <div class="rejilla-graficos">
+          <article class="tarjeta g-diario">
+            <div class="tarjeta-h"><div><h2>Resultado por día</h2><p class="muted">Facturas que terminaron en cada estado</p></div>
+              <div class="leyenda"><span><i class="m-ok"></i>Procesadas</span><span><i class="m-rev"></i>A revisión</span></div></div>
+            <div class="grafico" id="gDiario"></div>
+          </article>
+          <article class="tarjeta g-motivos">
+            <div class="tarjeta-h"><div><h2>Por qué van a revisión</h2><p class="muted" id="motivosInfo">Motivos en el periodo</p></div></div>
+            <div class="grafico" id="gMotivos"></div>
+          </article>
+        </div>
+
+        <div class="rejilla-2">
+          <article class="tarjeta">
+            <div class="tarjeta-h"><div><h2>Rendimiento por modelo</h2><p class="muted">Intentos de extracción y cuántos dieron datos válidos</p></div></div>
+            <div id="gModelos"></div>
+          </article>
+          <article class="tarjeta">
+            <div class="tarjeta-h"><div><h2>Corridas</h2><p class="muted">Elige una para ver su bitácora</p></div>
+              <div class="segmentado chico" id="fCorridas" role="radiogroup" aria-label="Filtrar corridas">
+                <button role="radio" data-f="" aria-checked="true">Todas</button>
+                <button role="radio" data-f="programada">Programadas</button>
+                <button role="radio" data-f="manual">Manuales</button>
+                <button role="radio" data-f="detenida">Detenidas</button>
+              </div></div>
+            <div class="lista-corridas" id="lCorridas"></div>
+          </article>
+        </div>
+
+        <article class="tarjeta">
+          <div class="tarjeta-h"><div><h2>Bitácora</h2><p class="muted" id="bitInfo">—</p></div>
+            <div class="herramientas">
+              <div class="segmentado chico" id="fNivel" role="radiogroup" aria-label="Nivel">
+                <button role="radio" data-n="" aria-checked="true">Todo</button>
+                <button role="radio" data-n="info">Info</button>
+                <button role="radio" data-n="aviso">Avisos</button>
+                <button role="radio" data-n="error">Errores</button>
+              </div>
+              <label class="buscador chico"><svg><use href="#i-buscar"/></svg><input id="fBit" type="search" placeholder="Buscar en la bitácora" aria-label="Buscar en la bitácora"></label>
+            </div></div>
+          <ol class="bitacora" id="bitacora"></ol>
+        </article>
+      </section>
+
+      <!-- FACTURAS -->
+      <section id="v-facturas" class="vista" hidden>
+        <div class="tarjeta sin-relleno">
+          <div class="tabla-barra">
+            <div class="segmentado" id="fEstado" role="radiogroup" aria-label="Estado"></div>
+            <div class="herramientas">
+              <label class="buscador"><svg><use href="#i-buscar"/></svg><input id="fBuscar" type="search" placeholder="Buscar archivo, emisor o número" aria-label="Buscar facturas"></label>
+              <button class="btn" id="bCsv" type="button"><svg><use href="#i-descargar"/></svg><span>Exportar CSV</span></button>
+            </div>
+          </div>
+          <div class="tabla-wrap"><table class="tabla" id="tFacturas">
+            <thead><tr>
+              <th data-orden="nombre">Archivo</th><th data-orden="estado">Estado</th><th data-orden="numero_factura">N.º factura</th>
+              <th data-orden="emisor">Emisor</th><th data-orden="total" class="n">Total</th><th data-orden="total_catalogo" class="n">Total catálogo</th>
+              <th data-orden="modelo">Modelo o motivo</th><th data-orden="actualizado">Actualizado</th></tr></thead>
+            <tbody></tbody></table></div>
+          <div class="paginador" id="paginador"></div>
+        </div>
+      </section>
+
+      <!-- CONFIGURACIÓN -->
+      <section id="v-config" class="vista" hidden>
+        <div class="config">
+          <nav class="cnav" id="cnav" aria-label="Secciones de configuración">
+            <button data-c="conexion"><svg><use href="#i-enlace"/></svg><span>Conexión</span></button>
+            <button data-c="carpetas"><svg><use href="#i-carpeta"/></svg><span>Carpetas y hoja</span></button>
+            <button data-c="frecuencia"><svg><use href="#i-reloj"/></svg><span>Frecuencia</span></button>
+            <button data-c="modelos"><svg><use href="#i-chip"/></svg><span>Modelos y API keys</span></button>
+            <button data-c="esquema"><svg><use href="#i-hoja"/></svg><span>Esquema de factura</span></button>
+            <button data-c="validacion"><svg><use href="#i-escudo"/></svg><span>Reglas de validación</span></button>
+            <button data-c="catalogo"><svg><use href="#i-catalogo"/></svg><span>Catálogo de productos</span></button>
+            <button data-c="probar"><svg><use href="#i-prueba"/></svg><span>Probar extracción</span></button>
+          </nav>
+          <div class="cpanel tarjeta" id="cpanel"></div>
+        </div>
+      </section>
+    </main>
+  </div>
+</div>
+
+<aside class="cajon" id="cajon" hidden aria-modal="true" role="dialog" aria-labelledby="dTitulo">
+  <div class="cajon-in">
+    <div class="cajon-h">
+      <div><p class="muted" id="dSub">Factura</p><h2 id="dTitulo">—</h2></div>
+      <button class="icono" id="dCerrar" type="button" aria-label="Cerrar detalle"><svg><use href="#i-cerrar"/></svg></button>
+    </div>
+    <div id="dCuerpo" class="cajon-cuerpo"></div>
+  </div>
+</aside>
+<div class="tooltip" id="tooltip" role="tooltip" hidden></div>
+<div class="toasts" id="toasts" aria-live="polite"></div>
+
+<script src="/web/graficos.js"></script>
+<script src="/web/app.js"></script>
+</body>
+</html>

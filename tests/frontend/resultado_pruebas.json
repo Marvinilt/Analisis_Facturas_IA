@@ -1,0 +1,122 @@
+{
+  "fecha": "2026-11-22T09:28:04",
+  "total": 23,
+  "correctas": 23,
+  "casos": [
+    {
+      "caso": "Seguridad: la API y el diagrama exigen sesión",
+      "ok": true,
+      "segundos": 0.2
+    },
+    {
+      "caso": "Acceso: primera cuenta (configuración inicial) en escritorio claro",
+      "ok": true,
+      "segundos": 1.5
+    },
+    {
+      "caso": "Panel: indicadores, recorrido, gráficos, corridas y bitácora (escritorio claro)",
+      "ok": true,
+      "segundos": 1.4
+    },
+    {
+      "caso": "Panel: tooltip del gráfico al pasar el ratón",
+      "ok": true,
+      "segundos": 0.1
+    },
+    {
+      "caso": "Panel: filtros de periodo (7, 90 días y todo)",
+      "ok": true,
+      "segundos": 1.2
+    },
+    {
+      "caso": "Panel: filtro de corridas, selección y filtros de bitácora",
+      "ok": true,
+      "segundos": 1.4
+    },
+    {
+      "caso": "Menú lateral contraído y persistente al recargar",
+      "ok": true,
+      "segundos": 1.3
+    },
+    {
+      "caso": "Tema oscuro con el botón de la esquina superior derecha, persistente",
+      "ok": true,
+      "segundos": 1.2
+    },
+    {
+      "caso": "Facturas: filtros por estado, búsqueda, orden y paginación (oscuro)",
+      "ok": true,
+      "segundos": 1.5
+    },
+    {
+      "caso": "Facturas: exportar CSV",
+      "ok": true,
+      "segundos": 0.1
+    },
+    {
+      "caso": "Facturas: detalle en el cajón lateral (procesada y en revisión)",
+      "ok": true,
+      "segundos": 1.2
+    },
+    {
+      "caso": "Configuración: las ocho secciones se abren y se ven bien (claro)",
+      "ok": true,
+      "segundos": 10.3
+    },
+    {
+      "caso": "Configuración: guardar con error de validación y guardar bien",
+      "ok": true,
+      "segundos": 0.7
+    },
+    {
+      "caso": "Panel con proceso en curso (recorrido animado)",
+      "ok": true,
+      "segundos": 2.1
+    },
+    {
+      "caso": "Alerta de proceso detenido y descartarla",
+      "ok": true,
+      "segundos": 2.9
+    },
+    {
+      "caso": "Cerrar sesión, contraseña incorrecta y volver a entrar",
+      "ok": true,
+      "segundos": 0.9
+    },
+    {
+      "caso": "Acceso en tema oscuro (escritorio)",
+      "ok": true,
+      "segundos": 2.9
+    },
+    {
+      "caso": "Acceso en tema oscuro (movil)",
+      "ok": true,
+      "segundos": 2.6
+    },
+    {
+      "caso": "Panel, facturas, detalle y configuración en laptop",
+      "ok": true,
+      "segundos": 7.2
+    },
+    {
+      "caso": "Panel, facturas, detalle y configuración en tableta",
+      "ok": true,
+      "segundos": 8.0
+    },
+    {
+      "caso": "Panel, facturas, detalle y configuración en movil",
+      "ok": true,
+      "segundos": 7.2
+    },
+    {
+      "caso": "Estados vacíos: panel y facturas sin datos",
+      "ok": true,
+      "segundos": 2.6
+    },
+    {
+      "caso": "Capturas del README",
+      "ok": true,
+      "segundos": 8.7
+    }
+  ]
+}

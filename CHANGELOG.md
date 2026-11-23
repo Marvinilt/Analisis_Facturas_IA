@@ -12,6 +12,54 @@ _Sin cambios todavía._
 
 ---
 
+## [1.2.0] - 2026-11-22
+
+El sistema pasa a correr entero en **Cloudflare Containers**: ya no depende de que el equipo local esté encendido.
+
+### Agregado
+
+#### Contenedor (`Dockerfile`, `.dockerignore`)
+
+- Imagen `python:3.13-slim` con `tzdata`, las dependencias de `requirements.txt` y solo `app/`, `web/` y `diseno/`. Corre con un usuario sin privilegios (uid 10001) y guarda los datos en `/datos` (D-48).
+- Al arrancar ejecuta `python -m app.nube restaurar` y luego Uvicorn con `exec`, para que reciba SIGTERM y se apague de forma ordenada (60 s de gracia).
+- `.dockerignore` deja fuera `.env`, `data/`, pruebas, documentación y herramientas: ningún secreto ni dato entra en la imagen.
+
+#### Worker y Durable Object (`deploy/cloudflare/`)
+
+- Durable Object `FacturasApp` con la API nativa `ctx.container`: arranca el contenedor (1/4 vCPU, 1 GiB, 4 GB), espera a que responda `/_interno/salud`, le pasa los secretos como variables de entorno y le reenvía todas las peticiones (D-48).
+- Clase `Almacen` que intercepta `http://respaldo.interno` desde el contenedor y guarda el respaldo en el almacenamiento SQLite del Durable Object, en trozos de 512 KB y con generaciones para que un corte a medias no deje un respaldo roto (D-49).
+- Cron `*/5 * * * *` (pulso) que mantiene despierto el contenedor mientras el procesamiento programado esté activo o haya una corrida, y lo apaga de forma ordenada tras 15 minutos sin visitas (D-50).
+- Ruta `/_admin/respaldo` (GET para descargar, PUT para reemplazar) protegida con el secreto `TOKEN_ADMIN`; el Worker bloquea `/_interno/*` desde internet.
+
+#### Aplicación
+
+- `app/nube.py`: empaqueta la base (API de respaldo de SQLite) con `config.json`, `secretos.enc` y `.clave`; restaura solo nombres conocidos; vigila cambios con `PRAGMA data_version` y sube un respaldo cada 30 s si hubo cambios y al apagarse (D-49).
+- Rutas internas `/_interno/salud` y `/_interno/pulso` (esta exige un token que el Durable Object genera en cada arranque).
+- Código de configuración de un solo uso para crear la primera cuenta desde internet en una nube vacía (`FACTURAS_IA_CODIGO_CONFIGURACION`), con el mismo límite de intentos que el inicio de sesión; campo nuevo en la pantalla de acceso (D-50).
+- Tabla `ajustes` en la base: guarda la hora de la última corrida programada para que un reinicio del contenedor no adelante la siguiente.
+
+#### Script (`scripts/publicar_cloudflare.ps1`)
+
+- Sin parámetros: construye la imagen y despliega (comprueba que Docker esté corriendo).
+- `-Secretos`, `-SubirDatos`, `-BajarRespaldo` y `-CodigoConfiguracion`.
+
+#### Pruebas
+
+- `tests/test_nube.py`: empaquetar y restaurar, nombres ajenos ignorados, subida solo con cambios y reintento tras un fallo.
+- `tests/test_auth.py`: creación de la primera cuenta con código y protección de las rutas internas.
+- `tests/conftest.py`: todas las pruebas usan una carpeta de datos temporal.
+
+### Cambiado
+
+- Publicación: el Worker ya no reenvía por Workers VPC y túnel a `127.0.0.1:8000`, sino al Durable Object del contenedor. La decisión D-45 queda reemplazada por la D-48.
+- Los datos y la cuenta del equipo local se migraron a la nube. La app local queda como entorno de desarrollo.
+
+### Corregido
+
+- Las pruebas podían escribir en la carpeta `data/` real si un módulo de prueba importaba la app antes de fijar `FACTURAS_IA_DATA`. Ahora `tests/conftest.py` la fija antes de cualquier importación.
+
+---
+
 ## [1.1.0] - 2026-11-22
 
 Rediseño completo del frontend, inicio de sesión, panel de indicadores con gráficos y publicación en internet con Cloudflare Tunnel.

@@ -29,3 +29,7 @@ Desktop.ini
 # Cloudflare / Wrangler
 .wrangler/
 node_modules/
+
+# Token de administración del respaldo en Cloudflare (lo crea scripts/publicar_cloudflare.ps1)
+deploy/cloudflare/.token_admin
+deploy/cloudflare/.codigo_configuracion

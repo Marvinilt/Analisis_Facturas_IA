@@ -1,81 +1,118 @@
 ﻿<#
 .SYNOPSIS
-  Publica Facturas IA en un subdominio propio con Cloudflare (Wrangler + túnel + Workers VPC).
+  Publica Facturas IA en Cloudflare Containers (Worker + Durable Object + contenedor) y administra sus datos.
 
 .DESCRIPTION
-  Arquitectura:  navegador -> Worker «facturas-ia» (dominio propio, HTTPS)
-                 -> Workers VPC «facturas-ia-app» -> túnel «facturas-ia» -> http://127.0.0.1:8000
+  Arquitectura:  navegador -> Worker «facturas-ia» (facturas.marvinlt.cloud, HTTPS)
+                 -> Durable Object «FacturasApp» -> contenedor con la app de Python (puerto 8000)
 
-  No necesita permisos de DNS: el dominio propio del Worker crea su registro solo.
+  El sistema corre entero en Cloudflare: no depende de que este equipo esté encendido.
+  Los datos (base SQLite, config.json, claves cifradas) se respaldan en el almacenamiento del Durable Object.
 
-  Con -Configurar (una sola vez): crea el túnel y el servicio VPC si no existen, escribe el ID del
-  servicio en deploy/cloudflare/wrangler.jsonc y despliega el Worker.
-  Sin parámetros: comprueba que la app responda y conecta el túnel hasta que pulses Ctrl+C.
-
-  Requiere Wrangler con la sesión iniciada (wrangler login).
+  Sin parámetros: construye la imagen y despliega (necesita Docker Desktop abierto y «wrangler login»).
+  -Secretos:          copia las API keys del .env a los secretos del Worker (y crea el token de administración).
+  -SubirDatos:        reemplaza los datos de la nube por los de la carpeta data/ local y reinicia el contenedor.
+  -BajarRespaldo:     descarga el último respaldo de la nube a un .tar.gz.
+  -CodigoConfiguracion: para una instalación sin cuenta, crea un código de un solo uso para crear la
+                      primera cuenta desde internet. Lo guarda en deploy/cloudflare/.codigo_configuracion.
 
 .EXAMPLE
-  .\scripts\publicar_cloudflare.ps1 -Configurar
+  .\scripts\publicar_cloudflare.ps1 -Secretos
   .\scripts\publicar_cloudflare.ps1
+  .\scripts\publicar_cloudflare.ps1 -BajarRespaldo -Destino .\respaldo.tar.gz
 #>
 param(
-  [switch]$Configurar,
-  [string]$Tunel = "facturas-ia",
-  [string]$ServicioVpc = "facturas-ia-app",
-  [int]$Puerto = 8000
+  [switch]$Secretos,
+  [switch]$SubirDatos,
+  [switch]$BajarRespaldo,
+  [switch]$CodigoConfiguracion,
+  [string]$Destino = "",
+  [string]$Dominio = "facturas.marvinlt.cloud"
 )
 $ErrorActionPreference = "Stop"
 $raiz = Split-Path -Parent $PSScriptRoot
 $worker = Join-Path $raiz "deploy\cloudflare"
+$archivoToken = Join-Path $worker ".token_admin"
+$python = Join-Path $raiz ".venv\Scripts\python.exe"
 
 if (-not (Get-Command wrangler -ErrorAction SilentlyContinue)) {
   throw "No se encontró Wrangler. Instálalo con: npm install -g wrangler, y luego: wrangler login"
 }
 
-function Get-IdTunel {
-  $salida = wrangler tunnel list 2>&1 | Out-String
-  # Tabla de wrangler: | id | name | status | ...
-  $m = [regex]::Match($salida, "([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\W+$([regex]::Escape($Tunel))\s*[^\w-]")
-  if ($m.Success) { return $m.Groups[1].Value }
-  return $null
+function New-Aleatorio([int]$bytes = 32) {
+  $b = New-Object byte[] $bytes
+  [Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($b)
+  return [Convert]::ToBase64String($b).TrimEnd("=").Replace("+", "-").Replace("/", "_")
 }
 
-if ($Configurar) {
-  $id = Get-IdTunel
-  if (-not $id) {
-    $salida = wrangler tunnel create $Tunel 2>&1 | Out-String
-    $id = [regex]::Match($salida, "ID:\s*([0-9a-f-]{36})").Groups[1].Value
+function Get-TokenAdmin {
+  if (-not (Test-Path $archivoToken)) { throw "Falta el token de administración. Ejecuta primero: .\scripts\publicar_cloudflare.ps1 -Secretos" }
+  return (Get-Content $archivoToken -Raw).Trim()
+}
+
+function Send-Secretos([hashtable]$valores) {
+  $tmp = Join-Path ([IO.Path]::GetTempPath()) ("facturas-secretos-" + [guid]::NewGuid() + ".json")
+  try {
+    [IO.File]::WriteAllText($tmp, ($valores | ConvertTo-Json -Compress), (New-Object Text.UTF8Encoding $false))
+    Push-Location $worker
+    try { wrangler secret bulk $tmp } finally { Pop-Location }
+  } finally { Remove-Item $tmp -Force -ErrorAction SilentlyContinue }
+}
+
+if ($Secretos) {
+  $valores = @{}
+  $archivoEnv = Join-Path $raiz ".env"
+  if (Test-Path $archivoEnv) {
+    foreach ($linea in Get-Content $archivoEnv -Encoding UTF8) {
+      $l = $linea.Trim()
+      if (-not $l -or $l.StartsWith("#") -or -not $l.Contains("=")) { continue }
+      $k, $v = $l.Split("=", 2)
+      $k = $k.Trim().ToUpper().Replace("-", "_"); $v = $v.Trim().Trim('"').Trim("'")
+      if ($k -in @("OPENAI_APIKEY", "OPENAI_API_KEY") -and $v) { $valores["OPENAI_APIKEY"] = $v }
+      if ($k -in @("COMPOSIO_APIKEY", "COMPOSIO_API_KEY") -and $v) { $valores["COMPOSIO_APIKEY"] = $v }
+    }
   }
-  if (-not $id) { throw "No se pudo crear ni encontrar el túnel $Tunel." }
-  Write-Host "Túnel $Tunel`: $id"
-
-  $lista = wrangler vpc service list 2>&1 | Out-String
-  $svc = [regex]::Match($lista, "([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\W+$([regex]::Escape($ServicioVpc))\s*[^\w-]").Groups[1].Value
-  if (-not $svc) {
-    $salida = wrangler vpc service create $ServicioVpc --type http --tunnel-id $id --ipv4 127.0.0.1 --http-port $Puerto 2>&1 | Out-String
-    $svc = [regex]::Match($salida, "VPC service:\s*([0-9a-f-]{36})").Groups[1].Value
-  }
-  if (-not $svc) { throw "No se pudo crear ni encontrar el servicio VPC $ServicioVpc." }
-  Write-Host "Servicio VPC $ServicioVpc`: $svc"
-
-  $cfg = Join-Path $worker "wrangler.jsonc"
-  $texto = [IO.File]::ReadAllText($cfg)
-  $texto = [regex]::Replace($texto, '"service_id":\s*"[^"]*"', "`"service_id`": `"$svc`"")
-  [IO.File]::WriteAllText($cfg, $texto, (New-Object Text.UTF8Encoding $false))
-
-  Push-Location $worker
-  try { wrangler deploy } finally { Pop-Location }
-  Write-Host "Listo. Para publicar: .\scripts\publicar_cloudflare.ps1"
+  if (-not (Test-Path $archivoToken)) { [IO.File]::WriteAllText($archivoToken, (New-Aleatorio)) }
+  $valores["TOKEN_ADMIN"] = Get-TokenAdmin
+  Send-Secretos $valores
+  Write-Host "Secretos cargados: $($valores.Keys -join ', '). Se aplican la próxima vez que arranque el contenedor."
   return
 }
 
-try {
-  Invoke-WebRequest "http://127.0.0.1:$Puerto/api/auth/estado" -UseBasicParsing -TimeoutSec 3 | Out-Null
-} catch {
-  Write-Warning "La app no responde en el puerto $Puerto. Iníciala en otra terminal con:"
-  Write-Warning "  .venv\Scripts\python -m uvicorn app.main:app --host 127.0.0.1 --port $Puerto"
+if ($CodigoConfiguracion) {
+  $codigo = New-Aleatorio 18
+  Send-Secretos @{ CODIGO_CONFIGURACION = $codigo }
+  $archivo = Join-Path $worker ".codigo_configuracion"
+  [IO.File]::WriteAllText($archivo, $codigo)
+  Write-Host "Código guardado en $archivo. Vale solo mientras no exista ninguna cuenta."
+  Write-Host "Se aplica cuando el contenedor vuelva a arrancar (por ejemplo, tras: .\scripts\publicar_cloudflare.ps1)."
+  return
 }
-$id = Get-IdTunel
-if (-not $id) { throw "No existe el túnel $Tunel. Ejecuta primero: .\scripts\publicar_cloudflare.ps1 -Configurar" }
-Write-Host "Conectando el túnel $Tunel ($id). Ctrl+C para detener."
-wrangler tunnel run $id
+
+if ($BajarRespaldo) {
+  if (-not $Destino) { $Destino = Join-Path $raiz ("respaldo-nube-" + (Get-Date -Format "yyyyMMdd-HHmm") + ".tar.gz") }
+  Invoke-WebRequest "https://$Dominio/_admin/respaldo" -Headers @{ Authorization = "Bearer $(Get-TokenAdmin)" } -OutFile $Destino -UseBasicParsing
+  Write-Host "Respaldo descargado en $Destino"
+  return
+}
+
+if ($SubirDatos) {
+  Write-Warning "Esto reemplaza TODOS los datos de la nube (facturas, bitácora, cuenta y configuración) por los de data/ local."
+  $ok = Read-Host "Escribe SI para continuar"
+  if ($ok -ne "SI") { Write-Host "Cancelado."; return }
+  $paquete = Join-Path ([IO.Path]::GetTempPath()) "facturas-ia-subida.tar.gz"
+  & $python -m app.nube empaquetar $paquete
+  if ($LASTEXITCODE -ne 0) { throw "No se pudo empaquetar data/." }
+  try {
+    $r = Invoke-WebRequest "https://$Dominio/_admin/respaldo" -Method Put -InFile $paquete -ContentType "application/gzip" `
+      -Headers @{ Authorization = "Bearer $(Get-TokenAdmin)" } -UseBasicParsing
+    Write-Host "Datos subidos: $($r.Content). El contenedor se reinicia con ellos en la próxima visita."
+  } finally { Remove-Item $paquete -Force -ErrorAction SilentlyContinue }
+  return
+}
+
+docker info *> $null
+if ($LASTEXITCODE -ne 0) { throw "Docker no está corriendo. Abre Docker Desktop y vuelve a intentarlo." }
+Push-Location $worker
+try { wrangler deploy } finally { Pop-Location }
+Write-Host "Publicado en https://$Dominio"

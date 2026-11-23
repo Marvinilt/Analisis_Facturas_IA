@@ -64,7 +64,7 @@ $(".acceso-form").insertAdjacentHTML("afterbegin", `<button class="icono tema te
 rotularTema();
 
 /* ── Acceso ───────────────────────────────────────────── */
-let modoAcceso = "login", sesion = null;
+let modoAcceso = "login", sesion = null, pideCodigo = false;
 
 async function arrancar() {
   let s;
@@ -80,13 +80,17 @@ async function mostrarAcceso(s) {
   modoAcceso = s.requiere_configuracion ? (s.configuracion_permitida ? "configurar" : "bloqueado") : "login";
   const aviso = $("#aAviso");
   aviso.hidden = true; aviso.className = "aviso-acceso";
+  pideCodigo = modoAcceso === "configurar" && !!s.requiere_codigo;
+  $("#wCodigo").hidden = !pideCodigo;
   $("#wConfirmar").hidden = modoAcceso !== "configurar";
   $("#aMedidor").hidden = modoAcceso !== "configurar";
   $("#wRecordar").hidden = modoAcceso !== "login";
   $("#aClave").autocomplete = modoAcceso === "configurar" ? "new-password" : "current-password";
   if (modoAcceso === "configurar") {
     $("#aTitulo").textContent = "Crea tu cuenta";
-    $("#aSub").textContent = "Es la primera vez que se abre el sistema. Esta cuenta será la de administrador.";
+    $("#aSub").textContent = pideCodigo
+      ? "Es la primera vez que se abre el sistema. Escribe el código de configuración y elige tu usuario y contraseña de administrador."
+      : "Es la primera vez que se abre el sistema. Esta cuenta será la de administrador.";
     $("#aEntrar").textContent = "Crear cuenta y entrar";
   } else if (modoAcceso === "bloqueado") {
     $("#aTitulo").textContent = "Falta crear la cuenta";
@@ -100,7 +104,7 @@ async function mostrarAcceso(s) {
     $("#aEntrar").textContent = "Entrar";
   }
   $("#aEntrar").disabled = modoAcceso === "bloqueado";
-  setTimeout(() => $("#aUsuario").focus(), 50);
+  setTimeout(() => (pideCodigo ? $("#aCodigo") : $("#aUsuario")).focus(), 50);
 }
 
 $("#aVer").addEventListener("click", () => {
@@ -124,14 +128,16 @@ $("#fAcceso").addEventListener("submit", async (e) => {
   aviso.hidden = true; aviso.className = "aviso-acceso";
   const fallo = (m) => { aviso.hidden = false; aviso.innerHTML = `${ico("error")}<span>${esc(m)}</span>`; };
   if (!usuario || !clave) return fallo("Escribe tu usuario y tu contraseña.");
+  if (pideCodigo && !$("#aCodigo").value.trim()) return fallo("Escribe el código de configuración.");
   if (modoAcceso === "configurar" && clave !== $("#aConfirmar").value) return fallo("Las contraseñas no coinciden.");
   b.disabled = true; const texto = b.textContent; b.textContent = "Entrando…";
   try {
     const ruta = modoAcceso === "configurar" ? "/api/auth/configurar" : "/api/auth/login";
-    const cuerpo = modoAcceso === "configurar" ? { usuario, clave } : { usuario, clave, recordar: $("#aRecordar").checked };
+    const cuerpo = modoAcceso === "configurar" ? { usuario, clave, ...(pideCodigo ? { codigo: $("#aCodigo").value.trim() } : {}) }
+      : { usuario, clave, recordar: $("#aRecordar").checked };
     const r = await api(ruta, { method: "POST", body: JSON.stringify(cuerpo) });
     sesion = { autenticado: true, usuario: r.usuario };
-    $("#aClave").value = ""; $("#aConfirmar").value = "";
+    $("#aClave").value = ""; $("#aConfirmar").value = ""; $("#aCodigo").value = "";
     iniciarApp();
   } catch (err) { fallo(err.message); $("#aClave").select(); }
   finally { b.disabled = false; b.textContent = texto; }

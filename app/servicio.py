@@ -82,6 +82,9 @@ class Servicio:
         return ini <= ahora <= fin if ini <= fin else (ahora >= ini or ahora <= fin)
 
     def _bucle(self) -> None:
+        # La hora de la última corrida programada se guarda en la base para que un reinicio
+        # (en la nube el contenedor se reinicia en cada despliegue) no adelante la siguiente.
+        self.ultima_programada = float(db.leer_ajuste("ultima_programada", 0) or 0)
         while not self._apagar.wait(15):
             try:
                 cfg = configuracion.cargar()["frecuencia"]
@@ -89,6 +92,7 @@ class Servicio:
                     continue
                 if time.time() - self.ultima_programada >= 60 * int(cfg["cada_minutos"]):
                     self.ultima_programada = time.time()
+                    db.guardar_ajuste("ultima_programada", self.ultima_programada)
                     self.iniciar("programada")
             except Exception as e:  # noqa: BLE001
                 db.evento(None, None, "01", f"Error del planificador: {e}", "error")

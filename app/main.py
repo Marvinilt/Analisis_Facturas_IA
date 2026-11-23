@@ -5,7 +5,9 @@ Abrir:    http://localhost:8000
 """
 from __future__ import annotations
 
+import hmac
 import json
+import os
 import time
 from contextlib import asynccontextmanager
 from typing import Any
@@ -18,6 +20,7 @@ from fastapi.staticfiles import StaticFiles
 from . import auth, catalogo, configuracion, db, estadisticas, secretos
 from .extraction import ErrorDocumento, ErrorProveedor, crear_cadena
 from .extraction.preparar import preparar
+from .nube import respaldo
 from .servicio import servicio
 from .settings import ROOT, WEB
 from .storage import AlmacenError, crear_almacen
@@ -31,14 +34,18 @@ async def ciclo(app: FastAPI):
     for a in db.listar_archivos("en_proceso"):
         db.actualizar_archivo(a["file_id"], estado="pendiente", motivo="Se interrumpió la corrida anterior")
     servicio.iniciar_planificador()
+    respaldo.iniciar()
     yield
     servicio.apagar()
+    servicio.esperar(30)
+    respaldo.apagar()
 
 
 app = FastAPI(title="Facturas IA", lifespan=ciclo)
 
-# Rutas que se pueden abrir sin sesión: la página de inicio (que muestra el login), sus archivos y la autenticación.
-PUBLICAS = ("/web/", "/api/auth/")
+# Rutas que se pueden abrir sin sesión: la página de inicio (que muestra el login), sus archivos, la autenticación
+# y las rutas internas del contenedor (el Worker no las deja pasar desde internet y piden su propio token).
+PUBLICAS = ("/web/", "/api/auth/", "/_interno/")
 
 
 @app.middleware("http")
@@ -69,8 +76,10 @@ async def proteger(request: Request, llamar):
 def estado_sesion(request: Request) -> dict[str, Any]:
     usuario = auth.usuario_de(request.cookies.get(auth.COOKIE))
     hay = auth.hay_usuarios()
+    local = auth.es_local(request)
+    con_codigo = not hay and not local and bool(auth.codigo_configuracion())
     return {"autenticado": bool(usuario), "usuario": usuario, "requiere_configuracion": not hay,
-            "configuracion_permitida": not hay and auth.es_local(request)}
+            "configuracion_permitida": not hay and (local or con_codigo), "requiere_codigo": con_codigo}
 
 
 def _con_sesion(request: Request, respuesta: Response, usuario: str, recordar: bool) -> None:
@@ -96,18 +105,44 @@ def login(request: Request, respuesta: Response, usuario: str = Body(...), clave
 
 @app.post("/api/auth/configurar")
 def configurar_admin(request: Request, respuesta: Response, usuario: str = Body(...),
-                     clave: str = Body(...)) -> dict[str, Any]:
-    """Crea la primera cuenta. Solo funciona si no hay ninguna y la petición viene de este equipo."""
+                     clave: str = Body(...), codigo: str | None = Body(None)) -> dict[str, Any]:
+    """Crea la primera cuenta. Solo si no hay ninguna y la petición viene de este equipo o trae el código
+    de configuración que el Worker le da al contenedor en la nube."""
     if auth.hay_usuarios():
         raise HTTPException(409, "Ya existe una cuenta. Inicia sesión.")
     if not auth.es_local(request):
-        raise HTTPException(403, "La primera cuenta solo se crea desde este equipo (http://localhost:8000).")
+        if not auth.codigo_configuracion():
+            raise HTTPException(403, "La primera cuenta solo se crea desde este equipo (http://localhost:8000).")
+        ip = auth.ip_cliente(request)
+        espera = auth.bloqueado(ip)
+        if espera:
+            raise HTTPException(429, f"Demasiados intentos. Prueba de nuevo en {max(1, espera // 60)} min.")
+        if not auth.codigo_valido(codigo):
+            auth.registrar_fallo(ip)
+            raise HTTPException(403, "El código de configuración no es correcto.")
     errores = auth.validar_nueva(usuario, clave)
     if errores:
         raise HTTPException(422, {"errores": errores})
     auth.guardar_usuario(usuario, clave)
     _con_sesion(request, respuesta, usuario, False)
     return {"ok": True, "usuario": usuario.strip().lower()}
+
+
+# ── rutas internas del contenedor en la nube ─────────────
+@app.get("/_interno/salud")
+def salud() -> dict[str, Any]:
+    return {"ok": True}
+
+
+@app.get("/_interno/pulso")
+def pulso(request: Request) -> dict[str, Any]:
+    """Lo llama el Worker cada 5 minutos: dice si hay que mantener el contenedor despierto."""
+    token = os.environ.get("FACTURAS_IA_TOKEN_INTERNO")
+    if not token or not hmac.compare_digest(request.headers.get("x-token-interno", "").encode(), token.encode()):
+        raise HTTPException(404)
+    est = servicio.estado()
+    return {"programado": est["programado"], "corriendo": est["corriendo"], "proxima": est["proxima"],
+            "respaldo": {"ultimo": respaldo.ultimo, "error": respaldo.error}}
 
 
 @app.post("/api/auth/logout")

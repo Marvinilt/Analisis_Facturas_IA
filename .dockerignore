@@ -1,0 +1,17 @@
+# Solo entran en la imagen requirements.txt, app/, web/ y diseno/. Nunca secretos ni datos.
+.env
+.env.*
+data/
+.venv/
+venv/
+.git/
+.claude/
+.wrangler/
+node_modules/
+deploy/
+docs/
+tests/
+scripts/
+**/__pycache__/
+*.py[cod]
+*.log

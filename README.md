@@ -19,7 +19,8 @@ Lee cada factura (PDF o imagen) con IA, comprueba que los montos cuadren, la cru
 [![Google Drive](https://img.shields.io/badge/Google%20Drive-entrada-4285F4?logo=googledrive&logoColor=white)](https://drive.google.com)
 [![Google Sheets](https://img.shields.io/badge/Google%20Sheets-resultados-34A853?logo=googlesheets&logoColor=white)](https://sheets.google.com)
 [![Composio](https://img.shields.io/badge/Composio-Connect-6E56CF)](https://composio.dev)
-[![Cloudflare](https://img.shields.io/badge/Cloudflare-Tunnel-F38020?logo=cloudflare&logoColor=white)](https://www.cloudflare.com/products/tunnel/)
+[![Cloudflare](https://img.shields.io/badge/Cloudflare-Containers-F38020?logo=cloudflare&logoColor=white)](https://developers.cloudflare.com/containers/)
+[![Docker](https://img.shields.io/badge/Docker-imagen-2496ED?logo=docker&logoColor=white)](Dockerfile)
 [![JavaScript](https://img.shields.io/badge/JavaScript-sin%20dependencias-F7DF1E?logo=javascript&logoColor=black)](web/)
 [![Playwright](https://img.shields.io/badge/Playwright-pruebas%20E2E-2EAD33?logo=playwright&logoColor=white)](tests/frontend/)
 
@@ -86,34 +87,36 @@ Si ningún modelo está disponible, el proceso **se detiene** y la factura queda
 | **Facturas** | Tabla con filtros por estado, búsqueda, orden por columna, paginación, exportación a CSV y detalle completo en un panel lateral. |
 | **Interfaz** | Inicio de sesión, menú lateral contraíble, tema claro y oscuro, diseño adaptable a escritorio, tableta y móvil, y navegación con teclado. |
 | **Resiliencia** | Escritura idempotente, movimiento solo después de registrar, recuperación tras un corte y reintentos ante el límite de cuota de Google. |
-| **Publicación** | En <https://facturas.marvinlt.cloud> con un Worker de Cloudflare, Workers VPC y un túnel: HTTPS y sin abrir puertos. |
+| **Publicación** | En <https://facturas.marvinlt.cloud>, corriendo entero en Cloudflare Containers: no depende de que tu equipo esté encendido. Los datos se respaldan solos. |
 
 ## Arquitectura
 
 ```mermaid
 flowchart LR
     U(["Navegador"]) -- HTTPS --> W["Worker de Cloudflare<br/>facturas.marvinlt.cloud"]
-    W -- Workers VPC --> VPC["Servicio VPC<br/>facturas-ia-app"]
-    VPC -- túnel cifrado --> T["cloudflared<br/>túnel facturas-ia"]
-    U -. localhost .-> API
+    CRON["Cron cada 5 min<br/>pulso"] --> DO
+    W --> DO["Durable Object<br/>FacturasApp"]
+    DO --- ST[("Almacenamiento del DO<br/>respaldo de los datos")]
 
-    subgraph Equipo["Equipo local"]
-        T --> API
+    subgraph Contenedor["Cloudflare Containers · imagen Docker"]
+        DO --> API
         subgraph App["Facturas IA · FastAPI :8000"]
             AUTH["Sesión y seguridad<br/>app/auth.py"]
             API["API REST + frontend<br/>app/main.py"]
             EST["Indicadores<br/>app/estadisticas.py"]
             SV["Planificador<br/>app/servicio.py"]
             P["Pipeline 01–14<br/>app/pipeline.py"]
-            DB[("SQLite<br/>data/estado.db")]
+            DB[("SQLite<br/>/datos/estado.db")]
+            R["Respaldo<br/>app/nube.py"]
         end
-        O["Ollama<br/>GLM-OCR"]
     end
+    O["Ollama GLM-OCR<br/>(solo en local)"]
 
     API --> AUTH
     API --> EST --> DB
     API --> SV --> P --> DB
-    P --> O
+    DB --> R -- http://respaldo.interno --> DO
+    P -. en local .-> O
     P --> OA["OpenAI<br/>gpt-5.4-nano / mini"]
     P <--> CO["Composio Connect"]
     CO <--> GD[("Google Drive")]
@@ -127,7 +130,7 @@ flowchart LR
 | Frontend | HTML, CSS y JavaScript sin dependencias ni compilación. Gráficos SVG propios (`web/graficos.js`). |
 | IA | GLM-OCR en Ollama (local, CPU) y OpenAI con salida estructurada estricta. |
 | Google | Drive y Sheets mediante Composio Connect (MCP), limitado a la carpeta «Facturas IA». |
-| Publicación | Worker de Cloudflare con dominio propio, Workers VPC y Cloudflare Tunnel, gestionados con Wrangler (`deploy/cloudflare/`). |
+| Publicación | Imagen Docker ([Dockerfile](Dockerfile)) en Cloudflare Containers, detrás de un Worker con dominio propio y un Durable Object que la arranca, la mantiene despierta y guarda sus respaldos (`deploy/cloudflare/`). |
 
 El diagrama interactivo del flujo está en [diseno/flujo-facturas-ia.html](diseno/flujo-facturas-ia.html), y en la app, en *Diagrama del flujo*.
 
@@ -157,7 +160,7 @@ El diagrama interactivo del flujo está en [diseno/flujo-facturas-ia.html](disen
 | **[Ollama](https://ollama.com)** con el modelo `glm-ocr` (2,2 GB) | OCR gratis en local. En CPU tarda unos 45–60 s por página de imagen; los PDF con texto no lo necesitan. |
 | **API key de OpenAI** | Estructurador y modelo de respaldo. |
 | **API key de Composio Connect** (`ck_…`) | Con Google Drive y Google Sheets conectados en [composio.dev](https://composio.dev). |
-| *Opcional:* **[Wrangler](https://developers.cloudflare.com/workers/wrangler/)** con la sesión iniciada y un dominio en Cloudflare | Publicar el sistema en internet. Wrangler descarga `cloudflared` solo. |
+| *Opcional:* **[Wrangler](https://developers.cloudflare.com/workers/wrangler/)** con la sesión iniciada, **Docker Desktop**, el plan **Workers Paid** y un dominio en Cloudflare | Publicar el sistema en Cloudflare Containers. |
 | *Opcional:* Microsoft Edge o Google Chrome | Pruebas de la interfaz con Playwright. |
 
 ## Instalación
@@ -194,7 +197,7 @@ Las claves también se pueden escribir en la app, en **Configuración → Modelo
 
 ### 2. Cuenta de administrador
 
-La primera vez que abres `http://localhost:8000` **en el mismo equipo**, la pantalla de acceso te pide crear la cuenta. Por seguridad, esa pantalla no está disponible a través de Cloudflare. También puedes crearla, o cambiar la contraseña, desde la terminal:
+La primera vez que abres `http://localhost:8000` **en el mismo equipo**, la pantalla de acceso te pide crear la cuenta. Por seguridad, desde internet esa pantalla solo funciona con un código de configuración de un solo uso (ver [Publicación en Cloudflare](#publicación-en-cloudflare)). También puedes crearla, o cambiar la contraseña, desde la terminal:
 
 ```powershell
 .venv\Scripts\python -m app.auth crear-usuario admin
@@ -226,38 +229,53 @@ ollama serve   # si Ollama no está corriendo como servicio
 
 Abre <http://localhost:8000>, inicia sesión y usa **Procesar ahora**, o activa la revisión automática en **Configuración → Frecuencia**.
 
-> La app escucha solo en `127.0.0.1`. Para entrar desde otros equipos, publícala con Cloudflare Tunnel; no la expongas con `--host 0.0.0.0`.
+> La app escucha solo en `127.0.0.1`. Para entrar desde otros equipos, publícala en Cloudflare; no la expongas con `--host 0.0.0.0`.
 
 ## Publicación en Cloudflare
 
-**En línea:** <https://facturas.marvinlt.cloud>, protegido por el inicio de sesión.
-
-El sistema necesita Ollama, SQLite y un planificador en segundo plano, así que no puede correr dentro de Cloudflare. Lo que se publica es el equipo donde ya funciona, sin abrir puertos en el router:
+**En línea:** <https://facturas.marvinlt.cloud>, protegido por el inicio de sesión. Corre entero en Cloudflare: **no depende de que tu equipo esté encendido**.
 
 ```
-navegador ─HTTPS─► Worker «facturas-ia» ─► Workers VPC «facturas-ia-app» ─► túnel «facturas-ia» ─► 127.0.0.1:8000
-                   (facturas.marvinlt.cloud)
+navegador ─HTTPS─► Worker «facturas-ia» ─► Durable Object «FacturasApp» ─► contenedor (imagen Docker) :8000
+                   (facturas.marvinlt.cloud)        │
+                                                    └─ almacenamiento SQLite del DO: respaldo de los datos
 ```
 
-- El **Worker** ([deploy/cloudflare/](deploy/cloudflare/)) atiende el dominio propio y reenvía cada petición por **Workers VPC**. Fija las cabeceras `CF-Connecting-IP`, `X-Forwarded-For`, `X-Forwarded-Proto` y `X-Forwarded-Host`, pisando lo que mande el cliente: con ellas la app sabe que la petición viene de internet. Si el equipo está apagado, muestra una página de «no disponible».
-- El **túnel** abre una conexión de salida desde el equipo hacia Cloudflare.
-- El dominio propio del Worker crea su registro DNS solo, así que **no hace falta permiso para editar DNS**.
+| Pieza | Qué hace |
+|-------|----------|
+| [Dockerfile](Dockerfile) | Imagen `python:3.13-slim` con la app, `tzdata` y un usuario sin privilegios. Al arrancar restaura el último respaldo y luego inicia Uvicorn. |
+| Worker ([deploy/cloudflare/src/index.js](deploy/cloudflare/src/index.js)) | Atiende el dominio propio, fija las cabeceras `CF-Connecting-IP`, `X-Forwarded-*` (pisando las del cliente) y bloquea las rutas internas `/_interno/*`. |
+| Durable Object `FacturasApp` | Arranca el contenedor cuando hace falta, le pasa los secretos como variables de entorno y le reenvía las peticiones. Una única instancia, así que nunca hay dos procesos sobre los mismos datos. |
+| Respaldo ([app/nube.py](app/nube.py)) | El disco del contenedor se borra al reiniciar. La app sube un respaldo (base SQLite + configuración) a `http://respaldo.interno` cada 30 s si hubo cambios y al apagarse. Esa dirección no sale a internet: la intercepta el Worker y la guarda en el almacenamiento del Durable Object. |
+| Cron cada 5 min | Mantiene despierto el contenedor mientras el **procesamiento programado** esté activo o haya una corrida en curso. Si no, lo apaga tras 15 min sin visitas, y la próxima visita lo arranca en unos 10 s. |
 
-**Una sola vez** (con `wrangler login` hecho):
+> **OCR en la nube.** Ollama no está disponible dentro de Cloudflare. Los PDF con capa de texto siguen sin necesitar OCR (texto + `gpt-5.4-nano`); las imágenes y los PDF escaneados pasan al respaldo **OpenAI visión**.
+
+**Requisitos:** plan **Workers Paid** (desde 5 USD/mes; el contenedor de 1/4 vCPU y 1 GiB añade unos pocos dólares si pasa el mes encendido), Docker Desktop abierto y `wrangler login`.
+
+**Primera vez:**
 
 ```powershell
-.\scripts\publicar_cloudflare.ps1 -Configurar
+.\scripts\publicar_cloudflare.ps1 -Secretos      # copia las API keys del .env a los secretos del Worker
+.\scripts\publicar_cloudflare.ps1                # construye la imagen y despliega
+.\scripts\publicar_cloudflare.ps1 -SubirDatos    # opcional: lleva a la nube los datos y la cuenta de data/
 ```
 
-Crea el túnel y el servicio VPC si no existen, escribe el ID del servicio en `deploy/cloudflare/wrangler.jsonc` y despliega el Worker. Para otro dominio, cambia `routes` en ese archivo.
-
-**Cada vez que enciendas el equipo** (con la app ya corriendo):
+Si no subes datos, la nube empieza vacía y la primera cuenta solo se puede crear con un código de un solo uso:
 
 ```powershell
-.\scripts\publicar_cloudflare.ps1
+.\scripts\publicar_cloudflare.ps1 -CodigoConfiguracion   # lo guarda en deploy/cloudflare/.codigo_configuracion
 ```
 
-Conecta el túnel hasta que pulses Ctrl+C. Para una capa más de protección, puedes poner [Cloudflare Access](https://developers.cloudflare.com/cloudflare-one/applications/) delante del dominio.
+**Después de cambiar el código**, vuelve a ejecutar `.\scripts\publicar_cloudflare.ps1`: el contenedor se reinicia con la nueva imagen y recupera sus datos del respaldo.
+
+**Copia de seguridad en tu equipo:**
+
+```powershell
+.\scripts\publicar_cloudflare.ps1 -BajarRespaldo
+```
+
+> **No ejecutes a la vez la app local con el procesamiento programado activo y la de la nube**: las dos leerían la misma carpeta de Drive. La nube es ahora la instancia principal.
 
 ## La interfaz
 
@@ -332,6 +350,7 @@ $env:FACTURAS_IA_DATA = "C:\temp\facturas-demo"; .venv\Scripts\python -m uvicorn
 │   ├── configuracion.py     configuración editable con valores por defecto
 │   ├── secretos.py          API keys cifradas (Fernet)
 │   ├── settings.py          rutas del proyecto y lectura de .env
+│   ├── nube.py              respaldo de los datos cuando corre en Cloudflare Containers
 │   ├── db.py                estado en SQLite
 │   ├── extraction/          preparación del documento, GLM-OCR, OpenAI e instrucciones
 │   └── storage/             Drive y Sheets vía Composio, y carpeta local para pruebas
@@ -343,10 +362,13 @@ $env:FACTURAS_IA_DATA = "C:\temp\facturas-demo"; .venv\Scripts\python -m uvicorn
 ├── tests/
 │   ├── test_unidad.py       pruebas unitarias del procesamiento
 │   ├── test_auth.py         pruebas de inicio de sesión y protección de la API
+│   ├── test_nube.py         pruebas del respaldo en la nube
+│   ├── conftest.py          aísla las pruebas en una carpeta de datos temporal
 │   ├── frontend/            pruebas de la interfaz, datos de demostración, capturas y reporte
 │   └── docs/                11 documentos de prueba y resultados esperados
 ├── scripts/                 subir pruebas a Drive, ver la hoja y publicar en Cloudflare
-├── deploy/cloudflare/       Worker que publica la app en el dominio propio
+├── deploy/cloudflare/       Worker, Durable Object y wrangler.jsonc del contenedor
+├── Dockerfile               imagen de la app para Cloudflare Containers (o Docker en local)
 ├── diseno/                  diagrama interactivo del flujo
 ├── docs/capturas/           capturas del README
 ├── data/                    (se crea solo, no se versiona) configuración, estado y secretos
@@ -356,10 +378,11 @@ $env:FACTURAS_IA_DATA = "C:\temp\facturas-demo"; .venv\Scripts\python -m uvicorn
 ## Seguridad
 
 - **Inicio de sesión obligatorio.** Contraseñas con scrypt, cookie `HttpOnly` y `SameSite=Lax` (y `Secure` por HTTPS), sesiones de 12 horas y bloqueo de 5 minutos tras 5 intentos fallidos.
-- **La primera cuenta solo se crea desde el mismo equipo**, nunca a través del túnel.
+- **La primera cuenta solo se crea desde el mismo equipo** o, en la nube, con un código de un solo uso que solo conoce quien publica. Con una cuenta creada, esa vía se cierra.
 - Peticiones que modifican datos desde otro origen rechazadas, y cabeceras `X-Frame-Options`, `X-Content-Type-Options` y `Referrer-Policy`.
 - Claves de API cifradas en reposo; el navegador nunca recibe una completa.
-- La app escucha solo en `127.0.0.1`; el acceso externo pasa por Cloudflare con HTTPS.
+- La app escucha solo en `127.0.0.1`; el acceso externo pasa por Cloudflare con HTTPS. En el contenedor, solo el Durable Object llega a su puerto, y el Worker bloquea `/_interno/*`; la descarga y subida de respaldos exige un token de administración.
+- Las API keys viajan como secretos del Worker, nunca dentro de la imagen; `.dockerignore` deja fuera `.env` y `data/`.
 - En Google Drive opera **únicamente** sobre la carpeta «Facturas IA» y sus subcarpetas.
 - `.env` y `data/` no se versionan.
 
@@ -368,15 +391,17 @@ $env:FACTURAS_IA_DATA = "C:\temp\facturas-demo"; .venv\Scripts\python -m uvicorn
 | Síntoma | Causa probable | Qué hacer |
 |---------|----------------|-----------|
 | «Proceso detenido: ningún modelo disponible» | Ollama apagado, API key inválida o sin saldo | Revisa el error de cada modelo en la alerta; inicia Ollama o corrige la clave. Las facturas siguen pendientes. |
-| «Falta crear la cuenta» al entrar por el subdominio | Todavía no hay cuenta | Créala en `http://localhost:8000` desde el equipo, o con `python -m app.auth crear-usuario`. |
-| «Demasiados intentos» | 5 contraseñas incorrectas en 5 minutos | Espera 5 minutos. Si la olvidaste, cámbiala con `python -m app.auth crear-usuario <usuario>`. |
-| El subdominio muestra «Facturas IA no está disponible ahora» | El túnel o la app no están corriendo | Inicia la app y luego `.\scripts\publicar_cloudflare.ps1`. |
+| «Falta crear la cuenta» al entrar por el subdominio | La nube no tiene cuenta | Ejecuta `.\scripts\publicar_cloudflare.ps1 -CodigoConfiguracion` y redepliega, o crea la cuenta en local y usa `-SubirDatos`. |
+| «Demasiados intentos» | 5 contraseñas incorrectas en 5 minutos | Espera 5 minutos. Si la olvidaste: en local, `python -m app.auth crear-usuario <usuario>`; en la nube, baja el respaldo (`-BajarRespaldo`), descomprímelo en `data/`, cambia la contraseña con ese comando y súbelo con `-SubirDatos`. |
+| El subdominio muestra «Facturas IA no está disponible ahora» | El contenedor no arrancó a tiempo | Recarga en un minuto. Si sigue, revisa los registros con `wrangler tail` desde `deploy/cloudflare`. |
+| La primera visita tarda unos 10 s | El contenedor estaba dormido y está restaurando el respaldo | Es lo esperado cuando el procesamiento programado está apagado. |
 | El OCR tarda más de un minuto por página | GLM-OCR corre en CPU | Es lo esperado; reduce el lado máximo de imagen del modelo o usa PDF con texto. |
 | Error 429 de Google Sheets | Límite de lecturas por minuto | El sistema reintenta solo; baja el máximo por corrida si se repite. |
 
 ## Documentación relacionada
 
 - [CHANGELOG.md](CHANGELOG.md): historial de versiones.
-- [DECISIONES.md](DECISIONES.md): las 47 decisiones de diseño, con su motivo y dónde se cambian.
+- [DECISIONES.md](DECISIONES.md): las 50 decisiones de diseño, con su motivo y dónde se cambian.
 - [tests/frontend/REPORTE_PRUEBAS.md](tests/frontend/REPORTE_PRUEBAS.md): pruebas de la interfaz y defectos corregidos.
+- [tests/REPORTE_PRUEBAS_NUBE.md](tests/REPORTE_PRUEBAS_NUBE.md): pruebas de la imagen Docker y de la publicación en Cloudflare Containers.
 - [diseno/flujo-facturas-ia.html](diseno/flujo-facturas-ia.html): diagrama interactivo del flujo.

@@ -37,6 +37,7 @@ CREATE TABLE IF NOT EXISTS alertas (
     ts TEXT, nivel TEXT, clave TEXT, mensaje TEXT, activa INTEGER DEFAULT 1
 );
 CREATE TABLE IF NOT EXISTS contadores (clave TEXT PRIMARY KEY, valor TEXT);
+CREATE TABLE IF NOT EXISTS ajustes (clave TEXT PRIMARY KEY, valor TEXT);
 CREATE INDEX IF NOT EXISTS ix_archivos_md5 ON archivos(md5);
 CREATE INDEX IF NOT EXISTS ix_eventos_corrida ON eventos(corrida_id);
 """
@@ -187,3 +188,14 @@ def guardar_contadores(valores: dict[str, Any]) -> None:
 
 def contadores() -> dict[str, Any]:
     return {r["clave"]: json.loads(r["valor"]) for r in _q("SELECT * FROM contadores")}
+
+
+# ── ajustes internos (sobreviven a los reinicios del contenedor) ──
+def leer_ajuste(clave: str, defecto: Any = None) -> Any:
+    filas = _q("SELECT valor FROM ajustes WHERE clave=?", (clave,))
+    return json.loads(filas[0]["valor"]) if filas else defecto
+
+
+def guardar_ajuste(clave: str, valor: Any) -> None:
+    _x("INSERT INTO ajustes(clave,valor) VALUES(?,?) ON CONFLICT(clave) DO UPDATE SET valor=excluded.valor",
+       (clave, json.dumps(valor)))

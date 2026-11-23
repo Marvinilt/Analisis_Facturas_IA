@@ -8,6 +8,7 @@ from __future__ import annotations
 import getpass
 import hashlib
 import hmac
+import os
 import secrets
 import sys
 import threading
@@ -139,6 +140,16 @@ def es_local(request: Request) -> bool:
     host = request.client.host if request.client else ""
     via_proxy = any(h in request.headers for h in ("cf-connecting-ip", "cf-ray", "x-forwarded-for"))
     return host in ("127.0.0.1", "::1", "localhost", "testclient") and not via_proxy
+
+
+def codigo_configuracion() -> str | None:
+    """Código de un solo uso para crear la primera cuenta desde internet (lo define el Worker en la nube)."""
+    return os.environ.get("FACTURAS_IA_CODIGO_CONFIGURACION") or None
+
+
+def codigo_valido(codigo: str | None) -> bool:
+    esperado = codigo_configuracion()
+    return bool(esperado and codigo) and hmac.compare_digest(codigo.strip().encode(), esperado.encode())
 
 
 def es_https(request: Request) -> bool:

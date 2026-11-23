@@ -1,0 +1,21 @@
+{
+  // Facturas IA en Cloudflare: Worker + Durable Object + contenedor (ver src/index.js y el Dockerfile de la raíz).
+  "name": "facturas-ia",
+  "main": "src/index.js",
+  "compatibility_date": "2026-11-01",
+  "routes": [{ "pattern": "facturas.marvinlt.cloud", "custom_domain": true }],
+  "containers": [
+    {
+      "class_name": "FacturasApp",
+      "scheduling_policy": "durable_object",
+      "images": { "base": { "dockerfile": "../../Dockerfile", "build_context": "../.." } }
+    }
+  ],
+  "durable_objects": { "bindings": [{ "name": "FACTURAS", "class_name": "FacturasApp" }] },
+  "exports": { "FacturasApp": { "type": "durable-object", "storage": "sqlite" } },
+  // Pulso: mantiene despierto el contenedor mientras el procesamiento programado esté activo.
+  "triggers": { "crons": ["*/5 * * * *"] },
+  // Zona horaria del contenedor para el horario del procesamiento programado (la misma del equipo local).
+  "vars": { "ZONA_HORARIA": "America/Chicago" },
+  "observability": { "enabled": true }
+}

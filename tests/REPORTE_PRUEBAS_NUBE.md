@@ -38,6 +38,7 @@ Se construyó la imagen (`docker build --platform linux/amd64`, 1 min 51 s) y se
 | Cabeceras | `Strict-Transport-Security` y `X-Frame-Options: SAMEORIGIN`. |
 | Corrida programada en la nube | Corrida 43 a las 22:22 (hora local): se conectó a Google Drive por Composio, leyó «Facturas IA» y no había facturas pendientes. |
 | Respaldo automático | `PUT http://respaldo.interno/respaldo - Ok` en los registros del Worker: el intercept funciona. |
+| Cron de pulso | Primer disparo a las 22:35, unos 10 min después del despliegue (Cloudflare tarda en propagar un cron nuevo): `Pulso: {"programado":true,"corriendo":false,"proxima":"2026-11-22T22:52:01","respaldo":{"error":null},"estado":"despierto"}`. La próxima corrida programada respeta los 30 min desde la anterior, aunque el contenedor se haya reiniciado. |
 
 Capturas del campo «Código de configuración» simulando una visita desde internet a una instalación vacía: [`16_codigo_configuracion_escritorio.png`](frontend/capturas/16_codigo_configuracion_escritorio.png) y [`16_codigo_configuracion_movil.png`](frontend/capturas/16_codigo_configuracion_movil.png).
 
